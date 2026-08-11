@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="300"
+     viewBox="0 0 920 300" role="img" aria-labelledby="title description">
+  <title id="title">ev scan on a real corpus</title>
+  <desc id="description">Scanning 381 transcripts: 160 contained secrets and were redacted locally, 4 would be quarantined and never sent to a model, 248 carry a lesson worth extracting.</desc>
+
+  <defs>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style>
+
+    <linearGradient id="sc-rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E01B3D"/>
+      <stop offset="1" stop-color="#1B4DE0"/>
+    </linearGradient>
+
+    <filter id="sc-lift" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#0E1622" flood-opacity="0.07"/>
+    </filter>
+
+    <clipPath id="sc-type">
+      <rect x="42" y="60" width="0" height="28">
+        <animate attributeName="width" values="0;118;118" keyTimes="0;0.14;1" dur="11s" repeatCount="indefinite"/>
+      </rect>
+    </clipPath>
+  </defs>
+
+  <rect width="920" height="300" fill="#FFFFFF"/>
+  <rect x="8" y="8" width="904" height="284" rx="18" fill="#FFFFFF" stroke="#E2E8F2" filter="url(#sc-lift)"/>
+
+  <g transform="translate(42 40)">
+    <rect x="0" y="-11" width="28" height="3" rx="1.5" fill="url(#sc-rule)"/>
+    <text class="mono" x="0" y="12" font-size="11.5" fill="#64748B" letter-spacing="1.6">SCAN</text>
+  </g>
+
+  <g class="mono" text-anchor="end">
+    <text x="878" y="52" font-size="11" fill="#94A3B8" letter-spacing="0.8">381 TRANSCRIPTS · 13s</text>
+  </g>
+
+  <g clip-path="url(#sc-type)">
+    <text class="mono" x="42" y="82" font-size="15" fill="#0E1622">$ ev scan</text>
+  </g>
+  <rect x="42" y="68" width="8" height="17" fill="#1B4DE0">
+    <animate attributeName="x" values="42;126;126" keyTimes="0;0.14;1" dur="11s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.45;0.5;0.95;1" dur="1.1s" repeatCount="indefinite"/>
+  </rect>
+
+  <text class="mono" x="42" y="110" font-size="12.5" fill="#8A97A8" opacity="0">
+    Scanning 381 transcripts (nothing leaves this machine)
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.18;0.24;1" dur="11s" repeatCount="indefinite"/>
+  </text>
+
+  <g class="mono" font-size="14">
+
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.26;0.32;1" dur="11s" repeatCount="indefinite"/>
+      <text x="126" y="153" text-anchor="end" fill="#0E1622" font-size="17">381</text>
+      <text class="sans" x="144" y="153" font-size="13" fill="#4B5B70">transcripts</text>
+      <rect x="440" y="142" width="420" height="7" rx="3.5" fill="#EEF1F6"/>
+      <rect x="440" y="142" width="0" height="7" rx="3.5" fill="#94A3B8">
+        <animate attributeName="width" values="0;420;420" keyTimes="0;0.42;1" dur="11s" begin="0s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.34;0.40;1" dur="11s" repeatCount="indefinite"/>
+      <text x="126" y="189" text-anchor="end" fill="#E01B3D" font-size="17">160</text>
+      <text class="sans" x="144" y="189" font-size="13" fill="#4B5B70">contained secrets — redacted locally</text>
+      <rect x="440" y="178" width="420" height="7" rx="3.5" fill="#EEF1F6"/>
+      <rect x="440" y="178" width="0" height="7" rx="3.5" fill="#E01B3D">
+        <animate attributeName="width" values="0;176;176" keyTimes="0;0.50;1" dur="11s" begin="0s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.42;0.48;1" dur="11s" repeatCount="indefinite"/>
+      <text x="126" y="225" text-anchor="end" fill="#E01B3D" font-size="17">4</text>
+      <text class="sans" x="144" y="225" font-size="13" fill="#4B5B70">quarantined — never sent to any model</text>
+      <rect x="440" y="214" width="420" height="7" rx="3.5" fill="#EEF1F6"/>
+      <rect x="440" y="214" width="0" height="7" rx="3.5" fill="#E01B3D">
+        <animate attributeName="width" values="0;7;7" keyTimes="0;0.58;1" dur="11s" begin="0s" repeatCount="indefinite"/>
+      </rect>
+      <circle cx="452" cy="217.5" r="5" fill="none" stroke="#E01B3D" stroke-width="1.4" opacity="0">
+        <animate attributeName="opacity" values="0;0;0.75;0;0" keyTimes="0;0.58;0.64;0.74;1" dur="11s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="5;5;16;22;22" keyTimes="0;0.58;0.64;0.74;1" dur="11s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.50;0.56;1" dur="11s" repeatCount="indefinite"/>
+      <text x="126" y="261" text-anchor="end" fill="#1B4DE0" font-size="17">248</text>
+      <text class="sans" x="144" y="261" font-size="13" fill="#4B5B70">carry a lesson worth extracting</text>
+      <rect x="440" y="250" width="420" height="7" rx="3.5" fill="#EEF1F6"/>
+      <rect x="440" y="250" width="0" height="7" rx="3.5" fill="#1B4DE0">
+        <animate attributeName="width" values="0;273;273" keyTimes="0;0.66;1" dur="11s" begin="0s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+  </g>
+</svg>
