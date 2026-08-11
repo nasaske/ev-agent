@@ -92,13 +92,14 @@ def cmd_run(args: argparse.Namespace, config: Config) -> int:
     ledger = Ledger.load(config.cache_dir)
     sessions = _sessions(config, args.days)
     pending = [s for s in sessions if args.force or not ledger.seen(s)]
-    if args.limit:
-        pending = pending[: args.limit]
-
     cached = len(sessions) - len(pending)
+
     if not pending:
         print(f"Nothing to do — {cached} sessions already processed.")
         return 0
+
+    if args.limit:
+        pending = pending[: args.limit]
 
     print(f"{len(pending)} to consider · {cached} cached · model {config.model}\n")
 
