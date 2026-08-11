@@ -38,6 +38,7 @@ class Config:
     min_user_turns: int
     max_digest_chars: int
     timeout_seconds: int
+    context_window: int
 
     @classmethod
     def load(cls) -> "Config":
@@ -52,6 +53,7 @@ class Config:
             model=os.environ.get("EV_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
             ollama_url=os.environ.get("EV_OLLAMA_URL", DEFAULT_OLLAMA_URL).rstrip("/"),
             min_user_turns=_int("EV_MIN_USER_TURNS", 4),
-            max_digest_chars=_int("EV_MAX_DIGEST_CHARS", 12_000),
-            timeout_seconds=_int("EV_TIMEOUT", 300),
+            max_digest_chars=_int("EV_MAX_DIGEST_CHARS", 8_000),
+            timeout_seconds=_int("EV_TIMEOUT", 600),
+            context_window=_int("EV_NUM_CTX", 4096),
         )

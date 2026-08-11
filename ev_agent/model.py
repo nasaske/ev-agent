@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 SYSTEM_PROMPT = """\
 You extract reusable engineering lessons from agent session logs.
@@ -28,8 +28,9 @@ EVIDENCE: <what in the log supports this, one sentence>
 """
 
 _TEMPERATURE = 0.2
-_CONTEXT_WINDOW = 8192
-_KEEP_ALIVE = 0
+_DEFAULT_CONTEXT_WINDOW = 4096
+_UNLOADED = "0"
+_RESIDENT_DURING_RUN = "5m"
 
 
 class ModelUnavailable(RuntimeError):
@@ -41,6 +42,17 @@ class Client:
     base_url: str
     model: str
     timeout: int
+    context_window: int = _DEFAULT_CONTEXT_WINDOW
+    keep_alive: str = _UNLOADED
+
+    def resident(self) -> "Client":
+        return replace(self, keep_alive=_RESIDENT_DURING_RUN)
+
+    def unload(self) -> None:
+        try:
+            self._post("/api/generate", {"model": self.model, "keep_alive": _UNLOADED})
+        except ModelUnavailable:
+            return
 
     def available(self) -> bool:
         try:
@@ -72,8 +84,8 @@ class Client:
                 "system": system,
                 "prompt": prompt,
                 "stream": False,
-                "keep_alive": _KEEP_ALIVE,
-                "options": {"temperature": _TEMPERATURE, "num_ctx": _CONTEXT_WINDOW},
+                "keep_alive": self.keep_alive,
+                "options": {"temperature": _TEMPERATURE, "num_ctx": self.context_window},
             },
         )
         return (payload.get("response") or "").strip()

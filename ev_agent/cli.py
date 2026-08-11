@@ -36,6 +36,15 @@ def inspect(session: Session, config: Config) -> Inspection:
     )
 
 
+def _client(config: Config) -> Client:
+    return Client(
+        base_url=config.ollama_url,
+        model=config.model,
+        timeout=config.timeout_seconds,
+        context_window=config.context_window,
+    )
+
+
 def _sessions(config: Config, days: int) -> list[Session]:
     return newer_than(discover(config.claude_projects, config.codex_sessions), days)
 
@@ -81,13 +90,21 @@ def cmd_scan(args: argparse.Namespace, config: Config) -> int:
 
 
 def cmd_run(args: argparse.Namespace, config: Config) -> int:
-    client = Client(config.ollama_url, config.model, config.timeout_seconds)
+    client = _client(config).resident()
     if not args.dry_run:
         try:
             client.ensure_ready()
         except ModelUnavailable as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+    try:
+        return _run_batch(args, config, client)
+    finally:
+        if not args.dry_run:
+            client.unload()
+
+
+def _run_batch(args: argparse.Namespace, config: Config, client: Client) -> int:
 
     ledger = Ledger.load(config.cache_dir)
     sessions = _sessions(config, args.days)
@@ -170,7 +187,7 @@ def cmd_promote(args: argparse.Namespace, config: Config) -> int:
 
 
 def cmd_status(args: argparse.Namespace, config: Config) -> int:
-    client = Client(config.ollama_url, config.model, config.timeout_seconds)
+    client = _client(config)
     ledger = Ledger.load(config.cache_dir)
     reachable = "reachable" if client.available() else "offline"
 
