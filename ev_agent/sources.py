@@ -75,6 +75,18 @@ def _discover_tree(root: Path, harness: Harness) -> Iterator[Session]:
         )
 
 
+def read_cwd(session: Session, max_lines: int = 8) -> str:
+    for index, entry in enumerate(_lines(session.path)):
+        if index >= max_lines:
+            break
+        if cwd := entry.get("cwd"):
+            return str(cwd)
+        payload = entry.get("payload")
+        if isinstance(payload, dict) and (cwd := payload.get("cwd")):
+            return str(cwd)
+    return ""
+
+
 def read_turns(session: Session) -> Iterator[Turn]:
     reader = _read_claude if session.harness == "claude" else _read_codex
     for line in _lines(session.path):

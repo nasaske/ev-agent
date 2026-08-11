@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from .distill import Digest
+from .sources import read_cwd
 
 _FIELD = re.compile(r"^(TITLE|CONTEXT|LESSON|EVIDENCE)\s*:\s*(.*)$", re.IGNORECASE)
 _THINKING = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -54,7 +55,7 @@ def parse(reply: str) -> Candidate:
 def note(candidate: Candidate, digest: Digest, redactions: int) -> str:
     today = date.today().isoformat()
     session = digest.session
-    project = _project_of(session.path)
+    project = _project_of(session.path, read_cwd(session))
 
     return f"""---
 brain: shared
@@ -86,8 +87,24 @@ status: candidate
 """
 
 
-def _project_of(path: Path) -> str:
-    for part in reversed(path.parts):
-        if part.startswith("-home-") and "projetos" in part:
-            return part.rsplit("-", 1)[-1] or _EMPTY
-    return path.parent.name or _EMPTY
+def _project_of(path: Path, cwd: str = "") -> str:
+    if cwd:
+        name = Path(cwd).name
+        if name and Path(cwd) != Path.home():
+            return name
+        return _EMPTY
+
+    encoded = path.parent.name
+    if not encoded.startswith("-"):
+        return encoded or _EMPTY
+
+    marker = "-projetos-"
+    if marker in encoded:
+        tail = encoded.rsplit(marker, 1)[-1]
+        return tail.strip("-") or _EMPTY
+
+    segments = [segment for segment in encoded.split("-") if segment]
+    home = Path.home()
+    root = [segment for segment in (home.parts[-1], "home") if segment]
+    meaningful = [segment for segment in segments if segment not in root]
+    return "-".join(meaningful) or _EMPTY

@@ -1,4 +1,6 @@
-# E.V Agent
+<p align="center">
+  <img src="assets/ev-banner.svg" alt="E.V Agent — sessions in, reviewed knowledge out, nothing leaves the machine" width="100%">
+</p>
 
 Your coding agents solve the same problem twice because nothing survives the
 session. E.V Agent reads the transcripts Claude Code and Codex already leave on
@@ -7,27 +9,14 @@ review before they enter your knowledge base.
 
 It never sends your sessions anywhere. The model runs on your machine.
 
-```
-$ ev scan
-Scanning 118 transcripts (nothing leaves this machine)
+<p align="center">
+  <img src="assets/ev-scan.svg" alt="ev scan on a real corpus: 381 transcripts, 160 contained secrets, 4 quarantined, 248 carry a lesson" width="100%">
+</p>
 
-  QUARANTINE  claude:8a3f21c9    47 hits  ~/.claude/projects/-home-daviparma/8a3f21c9.jsonl
-              residue: opaque:kBfzsj9C...
-  redacted    codex:019e2ce5     31 hits  ~/.codex/sessions/2026/05/15/rollout-...jsonl
-
-  118 transcripts
-  33 contained secrets (redacted locally)
-  1 would be quarantined — never sent to any model
-  14 carry a lesson worth extracting
-
+```bash
 $ ev run --days 7
-7 to consider · 111 cached · model qwen3:4b
-
-  wrote        pin-the-lockfile-before-deploying.md
-  wrote        check-certificate-fingerprint-before-blaming-credentials.md
-
-  2 candidates in ~/Documentos/Obsidian Vault/AI Brain/Skills Brain/_inbox
-  0 quarantined · 5 without a lesson
+  wrote  pin-the-lockfile-before-deploying.md
+  wrote  check-certificate-fingerprint-before-blaming-credentials.md
 
 $ ev promote pin-the-lockfile-before-deploying
 promoted → ~/Documentos/Obsidian Vault/AI Brain/Skills Brain/pin-the-lockfile-before-deploying.md
@@ -37,20 +26,16 @@ promoted → ~/Documentos/Obsidian Vault/AI Brain/Skills Brain/pin-the-lockfile-
 
 **Transcripts are credential dumps.** Every file your agent reads lands in the
 transcript verbatim — `.env` files, PEM blocks, tokens pasted into chat. On the
-machine this was built for, 28% of transcripts contained something
-credential-shaped. Any design that ships them to a hosted model is a leak
-waiting to happen, and the free tiers are the ones that train on your prompts.
+corpus this was built against, 42% of transcripts contained something
+credential-shaped, including the harness's own auth tokens. Any design that
+ships them to a hosted model is a leak waiting to happen, and the free tiers are
+the ones that train on your prompts.
 
 So the pipeline is built inside out:
 
-```
-transcript  →  distil  →  scrub  →  verify  →  local model  →  candidate note
-                 │          │         │                            │
-        drop file contents  │    fail closed:                 you review
-        drop thinking       │    residue ⇒ quarantine,        before it
-        keep intent,   redact known      never sent           counts
-        errors, tools  secret shapes
-```
+<p align="center">
+  <img src="assets/ev-pipeline.svg" alt="Pipeline: transcript, distil, scrub, verify, local model, note — with secrets absorbed at scrub and residue diverted to quarantine" width="100%">
+</p>
 
 **Distil before you scrub.** Dropping tool *results* removes most of the secret
 surface at the source, because that is where read files live. It also takes
@@ -65,6 +50,22 @@ nothing. Leaking a key costs a rotation.
 **The model extracts; you judge.** A 4B model on CPU is good at filling a
 template and bad at deciding what matters. So it never decides. Everything
 lands in `_inbox` and becomes real knowledge only when you promote it.
+
+## The scrubber was tuned on real data
+
+A redaction rule that fires on everything is the same as no rule at all — you
+lose the ability to tell exposure from noise. The first version flagged 100% of
+transcripts. Three rounds against a real corpus brought it down to something
+that means something:
+
+<p align="center">
+  <img src="assets/ev-calibration.svg" alt="Calibration: false positives fell from 100% to 62% to 42% over three rounds" width="100%">
+</p>
+
+The remaining hits are genuine — Fernet tokens, OAuth refresh tokens, base64
+keys — plus harmless over-redaction of things like Cloud Run hostnames. Over-
+redacting a hostname costs a little context. Under-redacting a key costs a
+rotation, so the bias is deliberate.
 
 ## Install
 
@@ -127,12 +128,18 @@ The first run is the expensive one; every run after it is nearly free.
 ## Running the tests
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t .
 ```
 
 The scrubber suite is the one that matters. It asserts that known secret
-shapes never survive, that ordinary prose and session UUIDs are left alone,
-and that anything unexplained trips the fail-closed check.
+shapes never survive, that ordinary prose, file paths, camelCase names and git
+SHAs are left alone, and that anything unexplained trips the fail-closed check.
+
+## Design
+
+The visual system is documented in
+[design/ev-visual-philosophy.md](design/ev-visual-philosophy.md). Diagrams are
+hand-written SVG with SMIL — no build step, no dependencies, same as the code.
 
 ## License
 
