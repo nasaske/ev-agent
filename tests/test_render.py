@@ -7,19 +7,23 @@ from pathlib import Path
 
 from ev_agent.distill import Digest
 from ev_agent.render import Skipped, note, parse
+from ev_agent.signals import verdict_from
 from ev_agent.sources import Session
 from ev_agent.store import Ledger, list_candidates, promote, slugify, write_candidate
 
-REPLY = """TITLE: Pin the lockfile before deploying
-CONTEXT: When a build fails with a missing module that is present in package.json.
-LESSON: Run npm ci instead of npm install so the lockfile is authoritative.
-EVIDENCE: The build failed with cannot find module zod until the lockfile was regenerated.
+REPLY = """TITLE: Unload the local model between calls
+WHEN: Running a local LLM on a laptop shared with browsers and editors.
+PATTERN: Set keep_alive to zero so the runtime releases the weights instead of
+holding them resident for five minutes after the last call.
+CASE: qwen3:4b at 8192 context held 3.9 GB against 2.1 GB free, and every token
+paged through zram until the context was cut to 4096.
+WHY: Available memory returned from 2.1 GB to 4.5 GB once the run finished.
 """
 
 
-def _digest(path: Path) -> Digest:
+def _digest(root: Path) -> Digest:
     session = Session(
-        path=path,
+        path=root / "fixture.jsonl",
         harness="claude",
         session_id="fixture0",
         cwd="",
@@ -29,61 +33,86 @@ def _digest(path: Path) -> Digest:
     return Digest(
         session=session,
         text="",
-        user_turns=4,
+        user_turns=6,
         errors=1,
-        corrections=1,
-        tools=("Bash",),
+        resolved=1,
+        verdict=verdict_from(1, 0, 0),
+        tools=("Bash", "Write"),
+        edits=1,
+        tool_calls=4,
     )
 
 
 class ParsesTheTemplate(unittest.TestCase):
-    def test_all_fields_are_read(self):
+    def test_every_field_is_read(self):
         candidate = parse(REPLY)
 
-        self.assertEqual("Pin the lockfile before deploying", candidate.title)
-        self.assertIn("npm ci", candidate.lesson)
-        self.assertIn("zod", candidate.evidence)
+        self.assertEqual("Unload the local model between calls", candidate.title)
+        self.assertIn("keep_alive", candidate.pattern)
+        self.assertIn("3.9 GB", candidate.case)
+        self.assertIn("4.5 GB", candidate.why)
+
+    def test_multi_line_fields_are_joined(self):
+        self.assertIn("holding them resident", parse(REPLY).pattern)
 
     def test_thinking_tags_are_stripped(self):
-        candidate = parse(f"<think>hmm let me see</think>\n{REPLY}")
+        candidate = parse(f"<think>weighing options</think>\n{REPLY}")
 
-        self.assertEqual("Pin the lockfile before deploying", candidate.title)
+        self.assertEqual("Unload the local model between calls", candidate.title)
+
+    def test_leading_prose_before_the_template_is_tolerated(self):
+        candidate = parse(f"Okay, the user wants a pattern. Here it is.\n\n{REPLY}")
+
+        self.assertEqual("Unload the local model between calls", candidate.title)
 
     def test_skip_is_honoured(self):
         with self.assertRaises(Skipped):
             parse("SKIP")
 
-    def test_reply_without_a_title_is_rejected(self):
+    def test_skip_as_a_title_is_honoured(self):
         with self.assertRaises(Skipped):
-            parse("CONTEXT: something\nLESSON: something else")
+            parse("TITLE: SKIP")
 
-    def test_empty_reply_is_rejected(self):
+    def test_a_reply_without_a_title_is_rejected(self):
         with self.assertRaises(Skipped):
-            parse("   ")
+            parse("PATTERN: something\nCASE: something else")
 
 
 class RendersTheNote(unittest.TestCase):
-    def test_frontmatter_follows_the_vault_convention(self):
-        body = note(parse(REPLY), _digest(Path("/tmp/x.jsonl")), redactions=3)
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
 
-        self.assertTrue(body.startswith("---\n"))
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_both_layers_are_present(self):
+        body = note(parse(REPLY), _digest(self.root), redactions=2, specificity=0.61)
+
+        self.assertIn("## Pattern", body)
+        self.assertIn("## What happened", body)
+
+    def test_frontmatter_records_the_verdict_and_specificity(self):
+        body = note(parse(REPLY), _digest(self.root), redactions=2, specificity=0.61)
+
         self.assertIn("brain: shared", body)
+        self.assertIn("outcome: praised", body)
+        self.assertIn("specificity: 0.61", body)
         self.assertIn("status: candidate", body)
-        self.assertIn("source: ev-agent", body)
 
     def test_provenance_is_recorded(self):
-        body = note(parse(REPLY), _digest(Path("/tmp/x.jsonl")), redactions=3)
+        body = note(parse(REPLY), _digest(self.root), redactions=2, specificity=0.61)
 
-        self.assertIn("3 redactions", body)
+        self.assertIn("2 redactions", body)
         self.assertIn("[[E.V Agent]]", body)
 
 
 class Slugs(unittest.TestCase):
     def test_titles_become_filesystem_safe(self):
-        self.assertEqual("pin-the-lockfile", slugify("Pin the lockfile"))
+        self.assertEqual("unload-the-model", slugify("Unload the model"))
         self.assertEqual("acentos-e-simbolos", slugify("Acentos! e / símbolos"))
 
-    def test_empty_title_still_produces_a_name(self):
+    def test_an_unusable_title_still_produces_a_name(self):
         self.assertEqual("untitled", slugify("!!!"))
 
 
@@ -98,8 +127,8 @@ class InboxLifecycle(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_candidates_never_overwrite_each_other(self):
-        first = write_candidate(self.inbox, "same-name", "one")
-        second = write_candidate(self.inbox, "same-name", "two")
+        first = write_candidate(self.inbox, "same", "one")
+        second = write_candidate(self.inbox, "same", "two")
 
         self.assertNotEqual(first, second)
         self.assertEqual(2, len(list_candidates(self.inbox)))

@@ -8,7 +8,8 @@ from pathlib import Path
 from .distill import Digest
 from .sources import read_cwd
 
-_FIELD = re.compile(r"^(TITLE|CONTEXT|LESSON|EVIDENCE)\s*:\s*(.*)$", re.IGNORECASE)
+_FIELDS = ("TITLE", "WHEN", "PATTERN", "CASE", "WHY")
+_FIELD = re.compile(rf"^({'|'.join(_FIELDS)})\s*:\s*(.*)$", re.IGNORECASE)
 _THINKING = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _EMPTY = "—"
 
@@ -20,9 +21,10 @@ class Skipped(Exception):
 @dataclass(frozen=True)
 class Candidate:
     title: str
-    context: str
-    lesson: str
-    evidence: str
+    when: str
+    pattern: str
+    case: str
+    why: str
 
 
 def parse(reply: str) -> Candidate:
@@ -40,19 +42,26 @@ def parse(reply: str) -> Candidate:
         elif current and line.strip():
             fields[current].append(line.strip())
 
-    title = " ".join(fields.get("TITLE", [])).strip()
+    title = _joined(fields, "TITLE")
     if not title:
         raise Skipped("no TITLE in reply")
+    if title.upper() == "SKIP":
+        raise Skipped("model returned SKIP as the title")
 
     return Candidate(
         title=title,
-        context=" ".join(fields.get("CONTEXT", [])).strip() or _EMPTY,
-        lesson=" ".join(fields.get("LESSON", [])).strip() or _EMPTY,
-        evidence=" ".join(fields.get("EVIDENCE", [])).strip() or _EMPTY,
+        when=_joined(fields, "WHEN") or _EMPTY,
+        pattern=_joined(fields, "PATTERN") or _EMPTY,
+        case=_joined(fields, "CASE") or _EMPTY,
+        why=_joined(fields, "WHY") or _EMPTY,
     )
 
 
-def note(candidate: Candidate, digest: Digest, redactions: int) -> str:
+def _joined(fields: dict[str, list[str]], key: str) -> str:
+    return " ".join(fields.get(key, [])).strip()
+
+
+def note(candidate: Candidate, digest: Digest, redactions: int, specificity: float) -> str:
     today = date.today().isoformat()
     session = digest.session
     project = _project_of(session.path, read_cwd(session))
@@ -65,25 +74,30 @@ created_at: {today}
 updated_at: {today}
 source: ev-agent
 session: {session.label}
+outcome: {digest.verdict.label}
+specificity: {specificity:.2f}
 status: candidate
 ---
 
 # {candidate.title}
 
-## Context
-{candidate.context}
+## When
+{candidate.when}
 
-## Lesson
-{candidate.lesson}
+## Pattern
+{candidate.pattern}
 
-## Evidence
-{candidate.evidence}
+## What happened
+{candidate.case}
+
+## Why it held
+{candidate.why}
 
 ---
 
 > Drafted by [[E.V Agent]] from `{session.harness}` session `{session.session_id[:8]}`
-> on {session.modified:%Y-%m-%d} — {digest.summary}, {redactions} redactions.
-> Review before promoting out of `_inbox`.
+> on {session.modified:%Y-%m-%d} — {digest.summary}, {redactions} redactions,
+> specificity {specificity:.2f}. Review before promoting out of `_inbox`.
 """
 
 

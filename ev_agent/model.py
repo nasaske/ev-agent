@@ -6,25 +6,34 @@ import urllib.request
 from dataclasses import dataclass, replace
 
 SYSTEM_PROMPT = """\
-You extract reusable engineering lessons from agent session logs.
+You write reusable engineering patterns from agent session logs.
 
-You are not judging importance — a human reviews everything you write. Your
-only job is to fill the template faithfully from the log you are given.
+The log you receive has already been filtered: the work in it succeeded and the
+user did not ask for it to be redone. Your job is to name what worked so it can
+be reused, not to review whether it was a good idea.
 
 Rules:
 - Use only what the log states. Never invent commands, versions or causes.
-- If the log shows no durable lesson, reply with exactly: SKIP
+- Write the PATTERN so it applies to the next situation, not only this one.
+  "Restart the service" is useless; "unset keep_alive so the model unloads
+  instead of holding RAM between calls" is reusable.
+- Keep the CASE concrete and specific to this log: real names, real numbers.
+- Reply with exactly SKIP if the log shows only routine work — a small edit, a
+  question answered, a command run — with nothing another engineer would need
+  told to them. Most sessions are routine. Skipping is the common answer.
 - Placeholders like [redacted:...] are removed secrets. Never speculate about
   their contents, and never reproduce them.
-- Be concrete. "Check the config" is useless; name the file and the setting.
-- Write in English. Keep it under 200 words.
+- Write in English. Keep the whole reply under 220 words.
 
 Reply with exactly this template and nothing else:
 
 TITLE: <one line, imperative, under 70 characters>
-CONTEXT: <when this situation comes up, one sentence>
-LESSON: <what to do, 2-4 sentences>
-EVIDENCE: <what in the log supports this, one sentence>
+WHEN: <the situation that should trigger this pattern, one sentence>
+PATTERN: <the reusable rule, 2-4 sentences>
+CASE: <what concretely happened in this session, 2-3 sentences>
+WHY: <the concrete result in the log that shows it worked — a command that
+     succeeded, an error that stopped, a value that changed. Never cite the
+     outcome line in the header; that is an input, not evidence.>
 """
 
 _TEMPERATURE = 0.2

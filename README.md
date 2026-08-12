@@ -51,6 +51,70 @@ nothing. Leaking a key costs a rotation.
 template and bad at deciding what matters. So it never decides. Everything
 lands in `_inbox` and becomes real knowledge only when you promote it.
 
+## What counts as worth keeping
+
+Most sessions are not worth a note, and a tool that writes one for every
+session is a tool you stop reading. Four gates run before the model is ever
+called, cheapest first, and each one is plain code rather than a judgement
+call handed to an LLM:
+
+| Gate | Rejects |
+|---|---|
+| **Quarantine** | anything with credential residue after scrubbing |
+| **Real work** | chat-only sessions: no edits and fewer than three tool calls |
+| **Acceptance** | sessions you corrected, pushed back on, or where you refused an action |
+| **Specificity** | routine work, measured against your own corpus |
+
+Acceptance is read from the conversation, not guessed. Explicit praise
+("perfeito", "funcionou", "that works") counts as approval; a correction
+("na verdade", "ta errado", "actually") disqualifies the session even if
+praise appeared earlier. A tool-use rejection is a refusal, not an error —
+the distinction matters, because the same line in a transcript used to be
+filed as a build failure.
+
+Specificity is corpus-relative. Terms are counted across every transcript you
+have; a session whose vocabulary is common in your own history is routine, and
+one full of rare terms is not. On a 386-session corpus, 197 sessions passed
+acceptance and 31 passed specificity. The floor is `EV_MIN_SPECIFICITY` and it
+is worth tuning: the score distribution is tight, so small changes move a lot.
+
+## Running it automatically
+
+The point is not to remember to run it. A `Stop` hook queues each finished
+session; a drain processes the queue when the machine is free.
+
+```json
+{
+  "hooks": {
+    "Stop": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "/path/to/ev-agent/hooks/ev-enqueue.sh",
+        "timeout": 5,
+        "async": true
+      }]
+    }]
+  }
+}
+```
+
+Queueing is instant and never blocks the end of a session — the hook exits 0
+even on malformed input. Draining is where the time goes, so run it when you
+are not using the machine:
+
+```bash
+ev drain              # process everything queued
+ev drain --limit 3    # or just a few
+```
+
+A lock file keeps two drains from running at once, which on a laptop means two
+model loads competing for the same RAM. Because nothing is waiting on the
+result, a slow local model stops being a problem: a queue that takes half an
+hour overnight costs nothing.
+
+Codex has no hook system, so Codex sessions are picked up by `ev run` in batch.
+
 ## The scrubber was tuned on real data
 
 A redaction rule that fires on everything is the same as no rule at all — you
@@ -85,15 +149,35 @@ There are no runtime dependencies. The whole thing is the standard library.
 
 | Command | What it does |
 |---|---|
-| `ev scan` | Inventory transcripts and secret exposure. Local only, never calls a model. |
-| `ev run` | Distil, scrub and draft candidates into the inbox. |
-| `ev run --dry-run` | Show what would be sent, without sending it. |
+| `ev scan` | Inventory transcripts, secret exposure and specificity. Local only, never calls a model. |
+| `ev run` | Process a batch of sessions. |
+| `ev session <path>` | Process one transcript now. |
+| `ev enqueue <path>` | Add a transcript to the queue. This is what the hook calls. |
+| `ev drain` | Process the queue, one session at a time, under a lock. |
+| `ev index` | Rebuild the corpus vocabulary used for specificity. |
 | `ev list` | Candidates awaiting review. |
 | `ev promote <slug>` | Move a reviewed candidate into the knowledge base. |
-| `ev status` | Paths, model reachability, ledger. |
+| `ev status` | Backend, queue depth, ledger, specificity floor. |
 
 Useful flags: `--days N` to limit by age, `--limit N` to stop early, `--force`
-to ignore the cache.
+to ignore the cache, `--dry-run` to stop at the model boundary.
+
+## Backends
+
+Local by default. `EV_BACKEND=openrouter` sends the scrubbed digest to a hosted
+model instead, for machines that cannot host one.
+
+The same guarantees apply either way — distil, scrub, verify, quarantine happen
+before any backend is chosen, which is what makes the choice safe to make. Two
+rules are enforced in code rather than left to the operator: requests set
+`provider: {"data_collection": "deny"}`, and a model ending in `:free` is
+refused outright, because free tiers train on submitted prompts and that is the
+exact thing this tool exists to prevent.
+
+```bash
+export OPENROUTER_API_KEY=...
+EV_BACKEND=openrouter EV_OPENROUTER_MODEL=google/gemini-2.5-flash ev drain
+```
 
 ## Configuration
 
@@ -106,9 +190,15 @@ Everything is an environment variable with a working default.
 | `EV_INBOX` | `$EV_SKILLS_DIR/_inbox` |
 | `EV_CLAUDE_PROJECTS` | `~/.claude/projects` |
 | `EV_CODEX_SESSIONS` | `~/.codex/sessions` |
+| `EV_BACKEND` | `ollama` |
 | `EV_MODEL` | `qwen3:4b` |
 | `EV_OLLAMA_URL` | `http://127.0.0.1:11434` |
-| `EV_MAX_DIGEST_CHARS` | `12000` |
+| `EV_NUM_CTX` | `4096` |
+| `EV_OPENROUTER_MODEL` | `google/gemini-2.5-flash` |
+| `EV_MIN_SPECIFICITY` | `0.55` |
+| `EV_COMMON_TERM_RATIO` | `0.04` |
+| `EV_MAX_DIGEST_CHARS` | `8000` |
+| `EV_TIMEOUT` | `600` |
 | `EV_CACHE` | `~/.cache/ev-agent` |
 
 ## Efficiency
@@ -118,12 +208,15 @@ The first run is the expensive one; every run after it is nearly free.
 - Transcripts stream line by line — a 16 MB session never lands in memory.
 - The ledger keys on `(size, mtime)`, so unchanged sessions are skipped with a
   single `stat` call and are never parsed, let alone sent to a model.
-- Sessions without an error or a user correction are dropped before the model
-  is involved. On a real corpus that is most of them.
-- The digest is budgeted: intent and failures get 75% of the character
-  allowance, trace and conclusions share the rest.
-- Every request sets `keep_alive: 0`, so the model unloads instead of squatting
-  in RAM for five minutes after a run.
+- Four gates run before the model, cheapest first. On a 386-session corpus they
+  reject 355 of them for free.
+- The digest is budgeted: intent and fixed failures take 60% of the character
+  allowance, the work trace and your responses share the rest.
+- The model stays resident for the length of a run and is unloaded explicitly
+  at the end. Reloading per session cost 15.8s each on the machine this was
+  built on; holding it resident afterwards costs 3.9 GB.
+- The corpus vocabulary is built once and cached. Rebuild with `ev index` when
+  the corpus has grown a lot.
 
 ## Running the tests
 

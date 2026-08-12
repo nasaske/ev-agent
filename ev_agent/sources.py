@@ -27,6 +27,7 @@ class Turn:
     role: str
     text: str
     tool: str = ""
+    command: str = ""
 
 
 @dataclass(frozen=True)
@@ -89,8 +90,9 @@ def read_cwd(session: Session, max_lines: int = 8) -> str:
 
 def read_turns(session: Session) -> Iterator[Turn]:
     reader = _read_claude if session.harness == "claude" else _read_codex
+    issued: dict[str, str] = {}
     for line in _lines(session.path):
-        yield from reader(line)
+        yield from reader(line, issued)
 
 
 def _lines(path: Path) -> Iterator[dict]:
@@ -110,7 +112,7 @@ def _lines(path: Path) -> Iterator[dict]:
         return
 
 
-def _read_claude(entry: dict) -> Iterator[Turn]:
+def _read_claude(entry: dict, issued: dict[str, str]) -> Iterator[Turn]:
     kind = entry.get("type")
     if kind not in ("user", "assistant"):
         return
@@ -131,16 +133,25 @@ def _read_claude(entry: dict) -> Iterator[Turn]:
             if text := (block.get("text") or "").strip():
                 yield Turn(role=speaker, text=text)
         elif block_type == "tool_use":
-            yield Turn(role=ROLE_TOOL, text=_describe_tool(block), tool=block.get("name", "?"))
+            described = _describe_tool(block)
+            if identifier := block.get("id"):
+                issued[str(identifier)] = described
+            yield Turn(role=ROLE_TOOL, text=described, tool=block.get("name", "?"))
         elif block_type == "tool_result" and block.get("is_error"):
-            yield Turn(role=ROLE_ERROR, text=_flatten(block.get("content"))[:600])
+            origin = issued.get(str(block.get("tool_use_id", "")), "")
+            yield Turn(
+                role=ROLE_ERROR,
+                text=_flatten(block.get("content"))[:600],
+                command=origin,
+            )
 
 
-def _read_codex(entry: dict) -> Iterator[Turn]:
+def _read_codex(entry: dict, issued: dict[str, str]) -> Iterator[Turn]:
     payload = entry.get("payload")
     if not isinstance(payload, dict):
         return
     payload_type = payload.get("type")
+    call_id = str(payload.get("call_id", ""))
 
     if payload_type == "user_message":
         if text := (payload.get("message") or "").strip():
@@ -151,11 +162,14 @@ def _read_codex(entry: dict) -> Iterator[Turn]:
     elif payload_type in ("function_call", "custom_tool_call"):
         name = payload.get("name") or "?"
         arguments = _flatten(payload.get("arguments"))[:300]
-        yield Turn(role=ROLE_TOOL, text=f"{name} {arguments}", tool=name)
+        described = f"{name} {arguments}"
+        if call_id:
+            issued[call_id] = described
+        yield Turn(role=ROLE_TOOL, text=described, tool=name)
     elif payload_type in ("function_call_output", "custom_tool_call_output"):
         output = _flatten(payload.get("output"))
         if _looks_like_error(output):
-            yield Turn(role=ROLE_ERROR, text=output[:600])
+            yield Turn(role=ROLE_ERROR, text=output[:600], command=issued.get(call_id, ""))
 
 
 def _describe_tool(block: dict) -> str:
