@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, openrouter, queue, rarity
+from . import __version__, openrouter, progress, queue, rarity, watch
 from .config import Config
 from .distill import Digest, build
 from .model import SYSTEM_PROMPT, Client, ModelUnavailable
@@ -22,6 +22,9 @@ NO_WORK = "no-work"
 REWORKED = "reworked"
 ROUTINE = "routine"
 MODEL_SKIP = "model-skip"
+FAILED = "failed"
+
+_CONSECUTIVE_FAILURE_LIMIT = 3
 
 
 @dataclass(frozen=True)
@@ -34,10 +37,25 @@ class Inspection:
     specificity: float
 
 
-def inspect(session: Session, config: Config, vocabulary: rarity.Vocabulary | None) -> Inspection:
+def inspect(
+    session: Session,
+    config: Config,
+    vocabulary: rarity.Vocabulary | None,
+    reporter: progress.Reporter | None = None,
+) -> Inspection:
+    if reporter:
+        reporter.stage(progress.READING)
     digest = build(session, config.max_digest_chars)
+
+    if reporter:
+        reporter.stage(progress.SCRUBBING)
     result = scrub(digest.text)
+
+    if reporter:
+        reporter.stage(progress.WEIGHING)
     score = vocabulary.specificity(result.text, config.common_term_ratio) if vocabulary else 1.0
+    if reporter:
+        reporter.stage(progress.WEIGHING, score)
     return Inspection(
         digest=digest,
         redactions=len(result.hits),
@@ -98,6 +116,12 @@ def _vocabulary(config: Config, rebuild: bool = False) -> rarity.Vocabulary | No
     return vocabulary
 
 
+def _floor_for(config: Config, finding: Inspection) -> float:
+    if finding.digest.verdict.accepted:
+        return config.praised_min_specificity
+    return config.min_specificity
+
+
 def _process(
     session: Session,
     config: Config,
@@ -105,8 +129,9 @@ def _process(
     vocabulary: rarity.Vocabulary | None,
     ledger: Ledger,
     dry_run: bool,
+    reporter: progress.Reporter | None = None,
 ) -> tuple[str, str]:
-    finding = inspect(session, config, vocabulary)
+    finding = inspect(session, config, vocabulary, reporter)
 
     if finding.quarantined:
         reason = finding.reasons[0] if finding.reasons else "?"
@@ -121,14 +146,21 @@ def _process(
         ledger.record(session, REWORKED)
         return REWORKED, finding.digest.verdict.label
 
-    if finding.specificity < config.min_specificity:
-        ledger.record(session, ROUTINE, f"{finding.specificity:.2f}")
-        return ROUTINE, f"{finding.specificity:.2f}"
+    floor = _floor_for(config, finding)
+    if finding.specificity < floor:
+        detail = f"{finding.specificity:.2f} < {floor:.2f}"
+        ledger.record(session, ROUTINE, detail)
+        return ROUTINE, detail
 
     if dry_run:
         return "would-send", f"{finding.digest.summary} · spec {finding.specificity:.2f}"
 
+    if reporter:
+        reporter.stage(progress.ASKING)
     candidate = parse(client.generate(SYSTEM_PROMPT, finding.clean_text))
+
+    if reporter:
+        reporter.stage(progress.WRITING)
     body = note(candidate, finding.digest, finding.redactions, finding.specificity)
     path = write_candidate(config.inbox_dir, slugify(candidate.title), body)
     ledger.record(session, WROTE, path.name)
@@ -155,26 +187,52 @@ def _run_over(
     vocabulary = _vocabulary(config)
     ledger = Ledger.load(config.cache_dir)
     tally: dict[str, int] = {}
+    reporter = progress.Reporter(
+        config.cache_dir, config.backend, _model_name(config), len(sessions)
+    )
 
-    print(f"{len(sessions)} {label} · backend {config.backend} · model {_model_name(config)}\n")
+    print(f"{len(sessions)} {label} · backend {config.backend} · model {_model_name(config)}")
+    print(f"live view: ev watch\n")
+
+    consecutive_failures = 0
 
     try:
         for session in sessions:
+            reporter.begin(session.label)
             try:
-                outcome, detail = _process(session, config, client, vocabulary, ledger, dry_run)
+                outcome, detail = _process(
+                    session, config, client, vocabulary, ledger, dry_run, reporter
+                )
+                consecutive_failures = 0
             except Skipped:
                 outcome, detail = MODEL_SKIP, ""
                 ledger.record(session, MODEL_SKIP)
-            except (ModelUnavailable, openrouter.RefusedByPolicy) as exc:
+                consecutive_failures = 0
+            except openrouter.RefusedByPolicy as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 ledger.save()
                 return 2
+            except ModelUnavailable as exc:
+                consecutive_failures += 1
+                outcome, detail = FAILED, str(exc)[:60]
+                ledger.record(session, FAILED, detail)
+                print(f"  {FAILED:<12} {session.label}  {detail}", file=sys.stderr)
+                if consecutive_failures >= _CONSECUTIVE_FAILURE_LIMIT:
+                    print(
+                        f"error: {consecutive_failures} failures in a row — stopping. "
+                        f"Is the backend healthy? Try a smaller model or raise EV_TIMEOUT.",
+                        file=sys.stderr,
+                    )
+                    tally[outcome] = tally.get(outcome, 0) + 1
+                    reporter.finish(session.label, outcome, detail)
+                    break
 
             tally[outcome] = tally.get(outcome, 0) + 1
-            if outcome in (WROTE, QUARANTINED, "would-send"):
-                print(f"  {outcome:<12} {session.label}  {detail}")
+            reporter.finish(session.label, outcome, detail)
+            print(f"  {outcome:<12} {session.label}  {detail}")
     finally:
         ledger.save()
+        reporter.close()
         if not dry_run:
             client.unload()
 
@@ -280,7 +338,15 @@ def cmd_drain(args: argparse.Namespace, config: Config) -> int:
     finally:
         queue.release_lock(lock)
 
-    queue.rewrite(config.cache_dir, [])
+    settled = Ledger.load(config.cache_dir)
+    unfinished = [
+        item
+        for item in items
+        if settled.entries.get(str(item.path), {}).get("outcome") in (None, FAILED)
+    ]
+    queue.rewrite(config.cache_dir, unfinished)
+    if unfinished:
+        print(f"  {len(unfinished)} left queued for the next drain")
     return status
 
 
@@ -294,6 +360,13 @@ def cmd_index(args: argparse.Namespace, config: Config) -> int:
         f"{len(vocabulary.frequencies)} distinct terms → {relative_to_home(config.cache_dir)}"
     )
     return 0
+
+
+def cmd_watch(args: argparse.Namespace, config: Config) -> int:
+    if args.once:
+        print(watch.snapshot(config.cache_dir))
+        return 0
+    return watch.watch(config.cache_dir, args.interval)
 
 
 def cmd_list(args: argparse.Namespace, config: Config) -> int:
@@ -373,6 +446,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     index = subparsers.add_parser("index", help="rebuild the corpus vocabulary")
     index.set_defaults(func=cmd_index)
+
+    watching = subparsers.add_parser("watch", help="live view of the agent working")
+    watching.add_argument("--interval", type=float, default=1.0)
+    watching.add_argument("--once", action="store_true", help="print one frame and exit")
+    watching.set_defaults(func=cmd_watch)
 
     listing = subparsers.add_parser("list", help="show candidates awaiting review")
     listing.set_defaults(func=cmd_list)

@@ -72,11 +72,48 @@ praise appeared earlier. A tool-use rejection is a refusal, not an error —
 the distinction matters, because the same line in a transcript used to be
 filed as a build failure.
 
-Specificity is corpus-relative. Terms are counted across every transcript you
-have; a session whose vocabulary is common in your own history is routine, and
-one full of rare terms is not. On a 386-session corpus, 197 sessions passed
-acceptance and 31 passed specificity. The floor is `EV_MIN_SPECIFICITY` and it
-is worth tuning: the score distribution is tight, so small changes move a lot.
+Specificity is corpus-relative, and that is the point: it calibrates itself to
+how much you already know. Terms are counted across every transcript you have,
+so work that is routine *for you* scores low. Someone three weeks into their
+first harness has a small, varied corpus and will see almost everything clear
+the bar — which is correct, because at that stage almost everything is worth
+writing down. Someone with a mature skill library sees most days filtered out.
+The tool gets quieter as you get better without anyone tuning it.
+
+Praise lowers the bar rather than bypassing it. A session you explicitly
+approved clears at `EV_PRAISED_MIN_SPECIFICITY` (0.42) instead of
+`EV_MIN_SPECIFICITY` (0.55), because saying "that worked" is direct evidence
+of value and rarity is only a proxy for it.
+
+Both floors are worth tuning: the score distribution is tight, so small changes
+move a lot. On a 386-session corpus, 197 passed acceptance and 62 cleared
+specificity.
+
+## Watching it work
+
+`ev drain` can spend minutes on a single session, so it reports what it is
+doing rather than going quiet. `ev watch` renders the live state — no daemon,
+no window, no dependency, just a file the run writes and the panel reads.
+
+```
+┌ E.V AGENT ────────────────────────────────────── ollama · qwen3:4b ┐
+│                                                                    │
+│ ● working   1 of 4   queue 3                                       │
+│                                                                    │
+│ claude:c74d6480   02:14                                            │
+│ ◦ read  ◦ scrub  ◦ weigh  ● model  ◦ write   spec 0.65             │
+│                                                                    │
+│ 1 written                                                          │
+│                                                                    │
+│ recent                                                             │
+│   written      reset-codex-sidebar-state.md                        │
+│   routine      0.48 < 0.55                                         │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Red marks what was stopped, blue marks what moved through — the same colour
+grammar as the diagrams. `ev watch --once` prints a single frame, which is what
+you want in a status bar or a cron report.
 
 ## Running it automatically
 
@@ -154,6 +191,7 @@ There are no runtime dependencies. The whole thing is the standard library.
 | `ev session <path>` | Process one transcript now. |
 | `ev enqueue <path>` | Add a transcript to the queue. This is what the hook calls. |
 | `ev drain` | Process the queue, one session at a time, under a lock. |
+| `ev watch` | Live view of the agent working. `--once` prints one frame. |
 | `ev index` | Rebuild the corpus vocabulary used for specificity. |
 | `ev list` | Candidates awaiting review. |
 | `ev promote <slug>` | Move a reviewed candidate into the knowledge base. |
@@ -196,6 +234,7 @@ Everything is an environment variable with a working default.
 | `EV_NUM_CTX` | `4096` |
 | `EV_OPENROUTER_MODEL` | `google/gemini-2.5-flash` |
 | `EV_MIN_SPECIFICITY` | `0.55` |
+| `EV_PRAISED_MIN_SPECIFICITY` | `0.42` |
 | `EV_COMMON_TERM_RATIO` | `0.04` |
 | `EV_MAX_DIGEST_CHARS` | `8000` |
 | `EV_TIMEOUT` | `600` |
