@@ -217,6 +217,31 @@ export OPENROUTER_API_KEY=...
 EV_BACKEND=openrouter EV_OPENROUTER_MODEL=google/gemini-2.5-flash ev drain
 ```
 
+### Choosing a model
+
+Measured on one real 6,900-character digest, same prompt, same session:
+
+| Model | Time | Wrote a reusable pattern? |
+|---|---|---|
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | 13s | yes — generalised to any extension, named both SQLite stores |
+| `nvidia/nemotron-3-nano-30b-a3b:free` | 9s | mostly |
+| `openai/gpt-oss-20b:free` | 21s | mostly |
+| `qwen3:4b` (local, CPU) | 8m 03s | partly |
+| `qwen3:1.7b` (local, CPU) | 1m 03s | no — restated the case, and invented advice elsewhere |
+
+The gap that matters is not speed, it is whether the PATTERN field generalises.
+Small models restate what happened; the large ones state a rule you could apply
+to a different extension next month. A 1.7B model on a laptop finishes every
+time and is confidently wrong often enough to be a liability — one of its notes
+claimed a shell prefix "avoids password prompts", which is the opposite of what
+that prefix does.
+
+Free endpoints are the fastest and the best here, and they cost your privacy:
+OpenRouter files them under "Free model training", so `EV_ALLOW_FREE=1` flips
+`data_collection` to `allow` and your scrubbed digests become training data.
+That is a real trade, stated plainly rather than hidden behind a flag name.
+Paid endpoints of similar quality run a few cents for a whole backlog.
+
 ## Configuration
 
 Everything is an environment variable with a working default.
