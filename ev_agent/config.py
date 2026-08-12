@@ -10,8 +10,10 @@ DEFAULT_VAULT = HOME / "Documentos" / "Obsidian Vault"
 DEFAULT_CLAUDE = HOME / ".claude" / "projects"
 DEFAULT_CODEX = HOME / ".codex" / "sessions"
 
-DEFAULT_MODEL = "qwen3:4b"
+DEFAULT_MODEL = "phi4-mini"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
+DEFAULT_BACKEND = "ollama"
+DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash"
 
 
 def _path(name: str, default: Path) -> Path:
@@ -22,6 +24,17 @@ def _path(name: str, default: Path) -> Path:
 def _int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "").strip() or default)
     except ValueError:
         return default
 
@@ -39,6 +52,13 @@ class Config:
     max_digest_chars: int
     timeout_seconds: int
     context_window: int
+    backend: str
+    openrouter_model: str
+    allow_free_models: bool
+    min_specificity: float
+    min_grounding: float
+    praised_min_specificity: float
+    common_term_ratio: float
 
     @classmethod
     def load(cls) -> "Config":
@@ -56,4 +76,12 @@ class Config:
             max_digest_chars=_int("EV_MAX_DIGEST_CHARS", 8_000),
             timeout_seconds=_int("EV_TIMEOUT", 600),
             context_window=_int("EV_NUM_CTX", 4096),
+            backend=os.environ.get("EV_BACKEND", DEFAULT_BACKEND).strip() or DEFAULT_BACKEND,
+            openrouter_model=os.environ.get("EV_OPENROUTER_MODEL", "").strip()
+            or DEFAULT_OPENROUTER_MODEL,
+            allow_free_models=_flag("EV_ALLOW_FREE"),
+            min_specificity=_float("EV_MIN_SPECIFICITY", 0.55),
+            min_grounding=_float("EV_MIN_GROUNDING", 0.40),
+            praised_min_specificity=_float("EV_PRAISED_MIN_SPECIFICITY", 0.42),
+            common_term_ratio=_float("EV_COMMON_TERM_RATIO", 0.04),
         )

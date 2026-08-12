@@ -21,6 +21,7 @@ _RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
     ("github-token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,})")),
+    ("openrouter-key", re.compile(r"\bsk-or-v[0-9]-[A-Za-z0-9]{32,}")),
     ("openai-key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}")),
     ("anthropic-key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
     ("slack-token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}")),
