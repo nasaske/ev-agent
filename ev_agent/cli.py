@@ -327,6 +327,13 @@ def cmd_drain(args: argparse.Namespace, config: Config) -> int:
         print("Queue is empty.")
         return 0
 
+    items, warm = queue.settled(items, config.settle_minutes)
+    if warm:
+        print(f"{len(warm)} still being written — leaving them for the next drain")
+    if not items:
+        print("Nothing settled yet.")
+        return 0
+
     try:
         lock = queue.acquire_lock(config.cache_dir)
     except queue.DrainBusy as exc:
@@ -346,13 +353,13 @@ def cmd_drain(args: argparse.Namespace, config: Config) -> int:
     finally:
         queue.release_lock(lock)
 
-    settled = Ledger.load(config.cache_dir)
+    done = Ledger.load(config.cache_dir)
     unfinished = [
         item
         for item in items
-        if settled.entries.get(str(item.path), {}).get("outcome") in (None, FAILED)
+        if done.entries.get(str(item.path), {}).get("outcome") in (None, FAILED)
     ]
-    queue.rewrite(config.cache_dir, unfinished)
+    queue.rewrite(config.cache_dir, warm + unfinished)
     if unfinished:
         print(f"  {len(unfinished)} left queued for the next drain")
     return status

@@ -137,13 +137,28 @@ session; a drain processes the queue when the machine is free.
 ```
 
 Queueing is instant and never blocks the end of a session — the hook exits 0
-even on malformed input. Draining is where the time goes, so run it when you
-are not using the machine:
+even on malformed input. Draining is where the time goes, so it runs once a
+day, out of the way:
 
 ```bash
-ev drain              # process everything queued
+install -m 644 systemd/ev-agent-drain.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now ev-agent-drain.timer
+```
+
+The unit runs at `Nice=19` with idle CPU and I/O scheduling, so it yields to
+anything you are doing. `Persistent=true` catches up after a laptop that was
+asleep at 04:00. Or drain by hand whenever:
+
+```bash
+ev drain              # process everything settled
 ev drain --limit 3    # or just a few
 ```
+
+**The Stop hook fires after every assistant turn, not only at session end**, so
+the queue always contains the session you are still in. A transcript is not
+processed until it has been quiet for `EV_SETTLE_MINUTES` (30), which keeps
+half-written sessions out of your knowledge base.
 
 A lock file keeps two drains from running at once, which on a laptop means two
 model loads competing for the same RAM. Because nothing is waiting on the
@@ -274,6 +289,8 @@ Everything is an environment variable with a working default.
 | `EV_PRAISED_MIN_SPECIFICITY` | `0.42` |
 | `EV_COMMON_TERM_RATIO` | `0.04` |
 | `EV_MAX_DIGEST_CHARS` | `8000` |
+| `EV_SETTLE_MINUTES` | `30` |
+| `EV_MIN_GROUNDING` | `0.40` |
 | `EV_TIMEOUT` | `600` |
 | `EV_CACHE` | `~/.cache/ev-agent` |
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=E.V Agent — drain the queued sessions
+Documentation=https://github.com/nasaske/ev-agent
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/ev drain
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
+TimeoutStartSec=3600

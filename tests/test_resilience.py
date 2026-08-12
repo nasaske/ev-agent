@@ -79,6 +79,7 @@ class Base(unittest.TestCase):
             skills_dir=self.root / "skills",
             min_specificity=0.0,
             praised_min_specificity=0.0,
+            settle_minutes=0,
         )
         self.args = argparse.Namespace(dry_run=False, limit=0)
 

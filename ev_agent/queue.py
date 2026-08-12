@@ -37,6 +37,21 @@ def enqueue(cache_dir: Path, transcript: Path) -> bool:
     return True
 
 
+def settled(items: list[Pending], minutes: int) -> tuple[list[Pending], list[Pending]]:
+    if minutes <= 0:
+        return items, []
+    cutoff = datetime.now(tz=timezone.utc).timestamp() - minutes * 60
+    ready: list[Pending] = []
+    still_warm: list[Pending] = []
+    for item in items:
+        try:
+            quiet = item.path.stat().st_mtime <= cutoff
+        except OSError:
+            quiet = False
+        (ready if quiet else still_warm).append(item)
+    return ready, still_warm
+
+
 def pending(cache_dir: Path) -> list[Pending]:
     queue_path = cache_dir / _QUEUE_FILE
     if not queue_path.is_file():
