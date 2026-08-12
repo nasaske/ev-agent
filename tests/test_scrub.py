@@ -42,6 +42,7 @@ class RedactsKnownSecretShapes(unittest.TestCase):
         samples = (
             "ghp_" + "A" * 36,
             "sk-ant-" + "B" * 40,
+            "sk-or-v1-" + "e" * 64,
             "AKIA" + "C" * 16,
             "AIza" + "D" * 35,
             "xoxb-" + "1" * 20,

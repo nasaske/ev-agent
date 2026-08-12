@@ -72,6 +72,7 @@ def _backend(config: Config):
             model=config.openrouter_model,
             timeout=config.timeout_seconds,
             api_key=openrouter.api_key_from_env(),
+            allow_free=config.allow_free_models,
         )
     return Client(
         base_url=config.ollama_url,

@@ -28,6 +28,10 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _float(name: str, default: float) -> float:
     try:
         return float(os.environ.get(name, "").strip() or default)
@@ -50,6 +54,7 @@ class Config:
     context_window: int
     backend: str
     openrouter_model: str
+    allow_free_models: bool
     min_specificity: float
     praised_min_specificity: float
     common_term_ratio: float
@@ -73,6 +78,7 @@ class Config:
             backend=os.environ.get("EV_BACKEND", DEFAULT_BACKEND).strip() or DEFAULT_BACKEND,
             openrouter_model=os.environ.get("EV_OPENROUTER_MODEL", "").strip()
             or DEFAULT_OPENROUTER_MODEL,
+            allow_free_models=_flag("EV_ALLOW_FREE"),
             min_specificity=_float("EV_MIN_SPECIFICITY", 0.55),
             praised_min_specificity=_float("EV_PRAISED_MIN_SPECIFICITY", 0.42),
             common_term_ratio=_float("EV_COMMON_TERM_RATIO", 0.04),

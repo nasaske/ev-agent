@@ -24,6 +24,7 @@ class Client:
     model: str
     timeout: int
     api_key: str
+    allow_free: bool = False
 
     def resident(self) -> "Client":
         return self
@@ -35,15 +36,17 @@ class Client:
         return bool(self.api_key)
 
     def ensure_ready(self) -> None:
-        if self.model.endswith(_FREE_SUFFIX):
-            raise RefusedByPolicy(
-                f"{self.model!r} is a free-tier endpoint. Free tiers train on submitted "
-                "prompts, and this tool exists to keep session content private. "
-                "Choose a paid model."
-            )
         if not self.api_key:
             raise ModelUnavailable(
                 "OPENROUTER_API_KEY is not set. Export it, or use EV_BACKEND=ollama."
+            )
+        if self.model.endswith(_FREE_SUFFIX) and not self.allow_free:
+            raise RefusedByPolicy(
+                f"{self.model!r} is a free-tier endpoint. OpenRouter files these under "
+                '"Free model training": routing to them requires allowing prompt '
+                "collection, which is the thing this tool exists to avoid. "
+                "EV_ALLOW_FREE=1 proceeds and sends data_collection=allow — your "
+                "scrubbed digests then become training data."
             )
 
     def generate(self, system: str, prompt: str) -> str:
@@ -54,7 +57,7 @@ class Client:
                 {"role": "user", "content": prompt},
             ],
             "temperature": _TEMPERATURE,
-            "provider": {"data_collection": "deny"},
+            "provider": {"data_collection": "allow" if self.allow_free else "deny"},
         }
         request = urllib.request.Request(
             _ENDPOINT,
