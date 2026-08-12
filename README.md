@@ -177,7 +177,7 @@ git clone https://github.com/nasaske/ev-agent
 cd ev-agent
 pip install -e .
 
-ollama pull qwen3:4b
+ollama pull gemma3:4b
 ```
 
 There are no runtime dependencies. The whole thing is the standard library.
@@ -219,28 +219,40 @@ EV_BACKEND=openrouter EV_OPENROUTER_MODEL=google/gemini-2.5-flash ev drain
 
 ### Choosing a model
 
-Measured on one real 6,900-character digest, same prompt, same session:
+`ev bench --models a,b,c` runs candidates over one real session of yours and
+prints the title and pattern each produced, so this table is reproducible on
+your own corpus rather than something to take on faith.
 
-| Model | Time | Wrote a reusable pattern? |
+Measured on one 6,900-character digest, 16 GB laptop, CPU only:
+
+| Model | Time | Pattern generalised? |
 |---|---|---|
-| `nvidia/nemotron-3-ultra-550b-a55b:free` | 13s | yes — generalised to any extension, named both SQLite stores |
-| `nvidia/nemotron-3-nano-30b-a3b:free` | 9s | mostly |
-| `openai/gpt-oss-20b:free` | 21s | mostly |
-| `qwen3:4b` (local, CPU) | 8m 03s | partly |
-| `qwen3:1.7b` (local, CPU) | 1m 03s | no — restated the case, and invented advice elsewhere |
+| `gemma3:4b` | 116s | yes — "editor extension", named both storage databases |
+| `phi4-mini` | 107s | yes |
+| `qwen3:4b` | 8m 03s | partly, and it timed out on other sessions |
+| `qwen2.5:7b` | 200s | no — wrote about an unrelated topic entirely |
+| `qwen3:1.7b` | 63s | no — restated the case, and invented advice elsewhere |
+| `nemotron-3-ultra-550b:free` (hosted) | 13s | yes, with the sharpest detail |
 
-The gap that matters is not speed, it is whether the PATTERN field generalises.
-Small models restate what happened; the large ones state a rule you could apply
-to a different extension next month. A 1.7B model on a laptop finishes every
-time and is confidently wrong often enough to be a liability — one of its notes
-claimed a shell prefix "avoids password prompts", which is the opposite of what
-that prefix does.
+The measurement that mattered was not between models. Every small model first
+failed the same way — the PATTERN field came back as a summary of what
+happened, with the product name still in it. Adding one worked example to the
+system prompt, showing a case-shaped pattern beside a rule-shaped one, moved
+`gemma3:4b` from "Reset Codex Sidebar State" to "Restore Editor Extension UI
+State on Launch" with no change of model.
 
-Free endpoints are the fastest and the best here, and they cost your privacy:
+So: fix the prompt before shopping for a bigger model. A 4B on a laptop is
+enough for this job once it knows what the job is, and two minutes a session is
+free when nothing is waiting on the result.
+
+Bigger is not automatically better, either: `qwen2.5:7b` took the longest of
+the local models and wrote a confident note about a subject the session never
+touched.
+
+Hosted models are faster and slightly sharper. The free ones cost your privacy:
 OpenRouter files them under "Free model training", so `EV_ALLOW_FREE=1` flips
 `data_collection` to `allow` and your scrubbed digests become training data.
 That is a real trade, stated plainly rather than hidden behind a flag name.
-Paid endpoints of similar quality run a few cents for a whole backlog.
 
 ## Configuration
 
@@ -254,7 +266,7 @@ Everything is an environment variable with a working default.
 | `EV_CLAUDE_PROJECTS` | `~/.claude/projects` |
 | `EV_CODEX_SESSIONS` | `~/.codex/sessions` |
 | `EV_BACKEND` | `ollama` |
-| `EV_MODEL` | `qwen3:4b` |
+| `EV_MODEL` | `gemma3:4b` |
 | `EV_OLLAMA_URL` | `http://127.0.0.1:11434` |
 | `EV_NUM_CTX` | `4096` |
 | `EV_OPENROUTER_MODEL` | `google/gemini-2.5-flash` |

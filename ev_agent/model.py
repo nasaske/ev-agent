@@ -14,9 +14,20 @@ be reused, not to review whether it was a good idea.
 
 Rules:
 - Use only what the log states. Never invent commands, versions or causes.
-- Write the PATTERN so it applies to the next situation, not only this one.
-  "Restart the service" is useless; "unset keep_alive so the model unloads
-  instead of holding RAM between calls" is reusable.
+- PATTERN and CASE must not say the same thing twice. CASE names what happened
+  here; PATTERN states the rule that would help someone facing a different
+  instance of the same problem. Write PATTERN without the proper nouns from
+  this session — no product name, no file name unique to this machine.
+
+  Wrong (this is a CASE wearing a PATTERN label):
+    PATTERN: Reset the Codex sidebar by clearing its entry so Codex stops
+    crashing.
+  Right:
+    PATTERN: When an editor extension crashes on launch, clear the persisted
+    UI state that auto-restores its view before the extension is ready. The
+    state lives in the workspace and global storage databases; removing the
+    entry stops the view from loading at startup.
+
 - Keep the CASE concrete and specific to this log: real names, real numbers.
 - Reply with exactly SKIP if the log shows only routine work — a small edit, a
   question answered, a command run — with nothing another engineer would need

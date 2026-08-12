@@ -10,7 +10,7 @@ DEFAULT_VAULT = HOME / "Documentos" / "Obsidian Vault"
 DEFAULT_CLAUDE = HOME / ".claude" / "projects"
 DEFAULT_CODEX = HOME / ".codex" / "sessions"
 
-DEFAULT_MODEL = "qwen3:4b"
+DEFAULT_MODEL = "gemma3:4b"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_BACKEND = "ollama"
 DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash"
