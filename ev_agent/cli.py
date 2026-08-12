@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, openrouter, progress, queue, rarity, watch
+from . import __version__, bench, openrouter, progress, queue, rarity, watch
 from .config import Config
 from .distill import Digest, build
 from .model import SYSTEM_PROMPT, Client, ModelUnavailable
@@ -363,6 +363,42 @@ def cmd_index(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def cmd_bench(args: argparse.Namespace, config: Config) -> int:
+    models = [name.strip() for name in args.models.split(",") if name.strip()]
+    if not models:
+        print("error: pass --models a,b,c", file=sys.stderr)
+        return 1
+
+    if args.transcript:
+        session = _session_from_path(bench.transcript_at(args.transcript))
+    else:
+        picked = _most_specific(config)
+        if picked is None:
+            print("No session to benchmark against.", file=sys.stderr)
+            return 1
+        session = picked
+
+    digest = bench.reference_digest(session, config)
+    print(f"reference: {session.label}  ·  {len(digest)} chars\n")
+
+    for model in models:
+        print(bench.report(bench.measure(model, digest, config)))
+        print()
+    return 0
+
+
+def _most_specific(config: Config) -> Session | None:
+    vocabulary = _vocabulary(config)
+    best: tuple[float, Session] | None = None
+    for session in _sessions(config):
+        finding = inspect(session, config, vocabulary)
+        if not finding.digest.did_real_work or finding.quarantined:
+            continue
+        if best is None or finding.specificity > best[0]:
+            best = (finding.specificity, session)
+    return best[1] if best else None
+
+
 def cmd_watch(args: argparse.Namespace, config: Config) -> int:
     if args.once:
         print(watch.snapshot(config.cache_dir))
@@ -447,6 +483,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     index = subparsers.add_parser("index", help="rebuild the corpus vocabulary")
     index.set_defaults(func=cmd_index)
+
+    benching = subparsers.add_parser("bench", help="compare models on one real session")
+    benching.add_argument("--models", required=True, help="comma separated, e.g. gemma3:4b,phi4-mini")
+    benching.add_argument("--transcript", default="", help="defaults to your most specific session")
+    benching.set_defaults(func=cmd_bench)
 
     watching = subparsers.add_parser("watch", help="live view of the agent working")
     watching.add_argument("--interval", type=float, default=1.0)
