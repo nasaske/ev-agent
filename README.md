@@ -177,7 +177,7 @@ git clone https://github.com/nasaske/ev-agent
 cd ev-agent
 pip install -e .
 
-ollama pull gemma3:4b
+ollama pull phi4-mini
 ```
 
 There are no runtime dependencies. The whole thing is the standard library.
@@ -266,7 +266,7 @@ Everything is an environment variable with a working default.
 | `EV_CLAUDE_PROJECTS` | `~/.claude/projects` |
 | `EV_CODEX_SESSIONS` | `~/.codex/sessions` |
 | `EV_BACKEND` | `ollama` |
-| `EV_MODEL` | `gemma3:4b` |
+| `EV_MODEL` | `phi4-mini` |
 | `EV_OLLAMA_URL` | `http://127.0.0.1:11434` |
 | `EV_NUM_CTX` | `4096` |
 | `EV_OPENROUTER_MODEL` | `google/gemini-2.5-flash` |

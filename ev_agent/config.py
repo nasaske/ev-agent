@@ -10,7 +10,7 @@ DEFAULT_VAULT = HOME / "Documentos" / "Obsidian Vault"
 DEFAULT_CLAUDE = HOME / ".claude" / "projects"
 DEFAULT_CODEX = HOME / ".codex" / "sessions"
 
-DEFAULT_MODEL = "gemma3:4b"
+DEFAULT_MODEL = "phi4-mini"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_BACKEND = "ollama"
 DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash"
@@ -56,6 +56,7 @@ class Config:
     openrouter_model: str
     allow_free_models: bool
     min_specificity: float
+    min_grounding: float
     praised_min_specificity: float
     common_term_ratio: float
 
@@ -80,6 +81,7 @@ class Config:
             or DEFAULT_OPENROUTER_MODEL,
             allow_free_models=_flag("EV_ALLOW_FREE"),
             min_specificity=_float("EV_MIN_SPECIFICITY", 0.55),
+            min_grounding=_float("EV_MIN_GROUNDING", 0.40),
             praised_min_specificity=_float("EV_PRAISED_MIN_SPECIFICITY", 0.42),
             common_term_ratio=_float("EV_COMMON_TERM_RATIO", 0.04),
         )

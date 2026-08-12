@@ -19,14 +19,16 @@ Rules:
   instance of the same problem. Write PATTERN without the proper nouns from
   this session — no product name, no file name unique to this machine.
 
-  Wrong (this is a CASE wearing a PATTERN label):
-    PATTERN: Reset the Codex sidebar by clearing its entry so Codex stops
-    crashing.
-  Right:
-    PATTERN: When an editor extension crashes on launch, clear the persisted
-    UI state that auto-restores its view before the extension is ready. The
-    state lives in the workspace and global storage databases; removing the
-    entry stops the view from loading at startup.
+  The example below is about shipping rates. It is here to show the SHAPE of
+  the two fields, nothing more. Never reuse its subject, its nouns, or its
+  wording — your answer must be about the log you were given.
+
+    CASE-shaped (wrong for this field): Raised the carrier timeout to 30s so
+    the Correios quote stopped failing.
+    RULE-shaped (right): When an upstream quote call fails intermittently
+    under load, raise the client timeout to the upstream's published p99
+    before adding retries — retries on a too-short timeout multiply the load
+    that caused the failure.
 
 - Keep the CASE concrete and specific to this log: real names, real numbers.
 - Reply with exactly SKIP if the log shows only routine work — a small edit, a

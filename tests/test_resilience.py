@@ -14,11 +14,11 @@ from ev_agent.config import Config
 from ev_agent.model import ModelUnavailable
 from ev_agent.sources import Session
 
-REPLY = """TITLE: Keep the queue alive across failures
-WHEN: Draining a queue where one session may time out.
-PATTERN: Record the failure and move on instead of aborting the batch.
-CASE: A ten minute timeout on one transcript used to discard three untried ones.
-WHY: The remaining sessions completed after the change.
+REPLY = """TITLE: Run pytest and ruff before the deploy
+WHEN: A deploy is asked for right after an edit.
+PATTERN: Run pytest and ruff before the deploy.
+CASE: Write x.py, then Bash pytest and Bash ruff, then the deploy.
+WHY: pytest and ruff both ran before the deploy.
 """
 
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, bench, openrouter, progress, queue, rarity, watch
+from . import __version__, bench, grounding, openrouter, progress, queue, rarity, watch
 from .config import Config
 from .distill import Digest, build
 from .model import SYSTEM_PROMPT, Client, ModelUnavailable
@@ -22,6 +22,7 @@ NO_WORK = "no-work"
 REWORKED = "reworked"
 ROUTINE = "routine"
 MODEL_SKIP = "model-skip"
+UNGROUNDED = "ungrounded"
 FAILED = "failed"
 
 _CONSECUTIVE_FAILURE_LIMIT = 3
@@ -159,6 +160,12 @@ def _process(
     if reporter:
         reporter.stage(progress.ASKING)
     candidate = parse(client.generate(SYSTEM_PROMPT, finding.clean_text))
+
+    claim = f"{candidate.case} {candidate.pattern}"
+    if not grounding.is_grounded(claim, finding.clean_text, config.min_grounding):
+        share = grounding.check(claim, finding.clean_text).share
+        ledger.record(session, UNGROUNDED, f"{share:.0%}")
+        return UNGROUNDED, f"{share:.0%} of its terms are absent from the log"
 
     if reporter:
         reporter.stage(progress.WRITING)
