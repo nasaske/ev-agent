@@ -131,6 +131,61 @@ class DrainLock(unittest.TestCase):
         self.assertTrue(lock.exists())
         queue.release_lock(lock)
 
+    def test_a_long_drain_does_not_lose_its_lock(self):
+        lock = queue.acquire_lock(self.cache)
+        ancient = time.time() - 6 * 3600
+        os.utime(lock, (ancient, ancient))
+
+        with self.assertRaises(queue.DrainBusy):
+            queue.acquire_lock(self.cache)
+
+        queue.release_lock(lock)
+
+    def test_a_lock_left_by_a_dead_drain_is_taken_over(self):
+        self.cache.mkdir(parents=True, exist_ok=True)
+        lock = self.cache / "drain.lock"
+        lock.write_text("999999999", encoding="utf-8")
+
+        taken = queue.acquire_lock(self.cache)
+
+        self.assertTrue(taken.exists())
+        queue.release_lock(taken)
+
+    def test_a_lock_with_no_readable_owner_falls_back_to_its_age(self):
+        self.cache.mkdir(parents=True, exist_ok=True)
+        lock = self.cache / "drain.lock"
+        lock.write_text("not-a-pid", encoding="utf-8")
+        ancient = time.time() - 6 * 3600
+        os.utime(lock, (ancient, ancient))
+
+        taken = queue.acquire_lock(self.cache)
+
+        self.assertTrue(taken.exists())
+        queue.release_lock(taken)
+
+
+class ForgetsTranscriptsThatNoLongerExist(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.cache = self.root / "cache"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_a_vanished_transcript_is_dropped(self):
+        alive = self.root / "alive.jsonl"
+        alive.write_text("{}", encoding="utf-8")
+        gone = self.root / "gone.jsonl"
+        gone.write_text("{}", encoding="utf-8")
+        queue.enqueue(self.cache, alive)
+        queue.enqueue(self.cache, gone)
+        gone.unlink()
+
+        kept = queue.still_on_disk(queue.pending(self.cache))
+
+        self.assertEqual([alive], [item.path for item in kept])
+
 
 if __name__ == "__main__":
     unittest.main()

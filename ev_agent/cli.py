@@ -354,14 +354,18 @@ def cmd_drain(args: argparse.Namespace, config: Config) -> int:
         queue.release_lock(lock)
 
     done = Ledger.load(config.cache_dir)
-    unfinished = [
-        item
-        for item in items
-        if done.entries.get(str(item.path), {}).get("outcome") in (None, FAILED)
-    ]
-    queue.rewrite(config.cache_dir, warm + unfinished)
-    if unfinished:
-        print(f"  {len(unfinished)} left queued for the next drain")
+
+    def unfinished(item: queue.Pending) -> bool:
+        return done.entries.get(str(item.path), {}).get("outcome") in (None, FAILED)
+
+    survivors = [item for item in queue.pending(config.cache_dir) if unfinished(item)]
+    remaining = queue.still_on_disk(survivors)
+    queue.rewrite(config.cache_dir, remaining)
+
+    if vanished := len(survivors) - len(remaining):
+        print(f"  {vanished} no longer on disk — dropped from the queue")
+    if remaining:
+        print(f"  {len(remaining)} left queued for the next drain")
     return status
 
 

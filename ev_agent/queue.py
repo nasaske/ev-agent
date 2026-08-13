@@ -75,6 +75,10 @@ def pending(cache_dir: Path) -> list[Pending]:
     return items
 
 
+def still_on_disk(items: list[Pending]) -> list[Pending]:
+    return [item for item in items if item.path.is_file()]
+
+
 def rewrite(cache_dir: Path, items: list[Pending]) -> None:
     queue_path = cache_dir / _QUEUE_FILE
     tmp = queue_path.with_suffix(".tmp")
@@ -109,7 +113,30 @@ def release_lock(lock: Path) -> None:
     lock.unlink(missing_ok=True)
 
 
+def _owner_of(lock: Path) -> int:
+    try:
+        return int(lock.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def _alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return Path(f"/proc/{pid}").exists()
+    return True
+
+
 def _is_stale(lock: Path) -> bool:
+    if owner := _owner_of(lock):
+        return not _alive(owner)
     try:
         age = datetime.now(tz=timezone.utc).timestamp() - lock.stat().st_mtime
     except OSError:
