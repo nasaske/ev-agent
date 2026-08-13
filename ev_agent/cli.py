@@ -11,7 +11,7 @@ from . import __version__, bench, grounding, openrouter, progress, queue, rarity
 from .config import Config
 from .distill import Digest, build
 from .model import SYSTEM_PROMPT, Client, ModelUnavailable
-from .render import Skipped, note, parse
+from .render import Skipped, claim_of, note, parse
 from .scrub import scrub
 from .sources import Session, discover, newer_than, relative_to_home, session_id_from
 from .store import Ledger, list_candidates, promote, slugify, write_candidate
@@ -161,7 +161,7 @@ def _process(
         reporter.stage(progress.ASKING)
     candidate = parse(client.generate(SYSTEM_PROMPT, finding.clean_text))
 
-    claim = f"{candidate.case} {candidate.pattern}"
+    claim = claim_of(candidate)
     if not grounding.is_grounded(claim, finding.clean_text, config.min_grounding):
         share = grounding.check(claim, finding.clean_text).share
         ledger.record(session, UNGROUNDED, f"{share:.0%}")
@@ -327,6 +327,13 @@ def cmd_drain(args: argparse.Namespace, config: Config) -> int:
         print("Queue is empty.")
         return 0
 
+    items, warm = queue.settled(items, config.settle_minutes)
+    if warm:
+        print(f"{len(warm)} still being written — leaving them for the next drain")
+    if not items:
+        print("Nothing settled yet.")
+        return 0
+
     try:
         lock = queue.acquire_lock(config.cache_dir)
     except queue.DrainBusy as exc:
@@ -346,15 +353,19 @@ def cmd_drain(args: argparse.Namespace, config: Config) -> int:
     finally:
         queue.release_lock(lock)
 
-    settled = Ledger.load(config.cache_dir)
-    unfinished = [
-        item
-        for item in items
-        if settled.entries.get(str(item.path), {}).get("outcome") in (None, FAILED)
-    ]
-    queue.rewrite(config.cache_dir, unfinished)
-    if unfinished:
-        print(f"  {len(unfinished)} left queued for the next drain")
+    done = Ledger.load(config.cache_dir)
+
+    def unfinished(item: queue.Pending) -> bool:
+        return done.entries.get(str(item.path), {}).get("outcome") in (None, FAILED)
+
+    survivors = [item for item in queue.pending(config.cache_dir) if unfinished(item)]
+    remaining = queue.still_on_disk(survivors)
+    queue.rewrite(config.cache_dir, remaining)
+
+    if vanished := len(survivors) - len(remaining):
+        print(f"  {vanished} no longer on disk — dropped from the queue")
+    if remaining:
+        print(f"  {len(remaining)} left queued for the next drain")
     return status
 
 
@@ -389,7 +400,7 @@ def cmd_bench(args: argparse.Namespace, config: Config) -> int:
     print(f"reference: {session.label}  ·  {len(digest)} chars\n")
 
     for model in models:
-        print(bench.report(bench.measure(model, digest, config)))
+        print(bench.report(bench.measure(model, digest, config), floor=config.min_grounding))
         print()
     return 0
 

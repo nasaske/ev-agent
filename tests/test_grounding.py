@@ -66,6 +66,107 @@ class DoesNotPunishBrevity(unittest.TestCase):
         self.assertEqual(["commit", "settings.json"], terms)
 
 
+class ReadsWordsRatherThanPunctuation(unittest.TestCase):
+    def test_a_sentence_ending_period_is_not_part_of_the_term(self):
+        terms = grounding.distinctive_terms("The hook barred the commit.")
+
+        self.assertIn("commit", terms)
+        self.assertNotIn("commit.", terms)
+
+    def test_a_filename_keeps_its_extension(self):
+        terms = grounding.distinctive_terms("Edited settings.json and src/main.py.")
+
+        self.assertIn("settings.json", terms)
+        self.assertIn("src/main.py", terms)
+
+    def test_a_term_only_long_enough_with_its_punctuation_is_dropped(self):
+        self.assertEqual([], grounding.distinctive_terms("Ran npm."))
+
+    def test_a_trailing_period_no_longer_counts_as_invented(self):
+        self.assertNotIn("barred.", grounding.check("The commit was barred.", LOG).missing)
+
+
+PORTUGUESE_LOG = """# Session claude:0e85e5e2
+outcome: unremarked
+
+## What the user asked for
+- asked: '/home/daviparma/Downloads/certificado_final.pem'
+
+## What was actually done
+- said: Os `.pem` têm só a cadeia de certificados, sem a chave privada — e mTLS
+  exige a chave. Ela está nos arquivos PKCS#12.
+- Bash openssl pkcs12 -in "$P12" -legacy
+- said: O `.p12` abriu com `-legacy`.
+"""
+
+
+class JudgesIdentifiersRatherThanProse(unittest.TestCase):
+    def test_an_english_note_about_a_portuguese_log_is_grounded(self):
+        claim = (
+            "The .pem chain carried no private key, so openssl pkcs12 with -legacy "
+            "opened the PKCS#12 file for mTLS. The certificate then authenticated."
+        )
+
+        self.assertTrue(grounding.is_grounded(claim, PORTUGUESE_LOG))
+
+    def test_identifiers_are_what_gets_checked(self):
+        claim = (
+            "The .pem chain carried no private key, so openssl pkcs12 with -legacy "
+            "opened the PKCS#12 file for mTLS."
+        )
+
+        result = grounding.check(claim, PORTUGUESE_LOG)
+
+        self.assertEqual("identifiers", result.basis)
+        self.assertIn("pkcs12", result.checked)
+        self.assertNotIn("carried", result.checked)
+
+    def test_a_bare_command_name_is_prose_not_an_identifier(self):
+        self.assertEqual([], grounding.identifiers("openssl and curl were run"))
+
+    def test_a_flag_a_path_and_a_camel_case_symbol_are_identifiers(self):
+        found = grounding.identifiers("Set --no-verify on src/main.py and read auxiliaryBar")
+
+        self.assertIn("no-verify", found)
+        self.assertIn("src/main.py", found)
+        self.assertIn("auxiliarybar", found)
+
+    def test_invented_identifiers_are_still_caught(self):
+        claim = (
+            "quote_service.py raised api_client.timeout to the upstream p99 so the "
+            "Correios quote stopped failing. The retry_budget.yaml was left alone."
+        )
+
+        self.assertFalse(grounding.is_grounded(claim, PORTUGUESE_LOG))
+
+    def test_a_note_naming_nothing_concrete_falls_back_to_its_words(self):
+        claim = (
+            "The engineer reported the extension was crashing and the workspace "
+            "state was reset, which stopped the crash on the next launch."
+        )
+
+        result = grounding.check(claim, LOG)
+
+        self.assertEqual("prose", result.basis)
+
+
+class ReadsInflectionsAsTheSameWord(unittest.TestCase):
+    def test_a_log_that_says_barrou_matches_a_note_that_says_barred(self):
+        source = "The engineer removed the entry and the panel crashed."
+        claim = "Removing the entry stopped the panel from crashing repeatedly."
+
+        result = grounding.check(claim, source)
+
+        self.assertIn("removing", result.found)
+        self.assertIn("crashing", result.found)
+
+    def test_stemming_does_not_admit_an_unrelated_word(self):
+        result = grounding.check("The carrier quote failed.", "The commit was barred.")
+
+        self.assertIn("carrier", result.missing)
+        self.assertIn("quote", result.missing)
+
+
 class TheFloorIsAdjustable(unittest.TestCase):
     def test_a_strict_floor_rejects_a_partly_grounded_claim(self):
         claim = "The git commit was barred while the Correios carrier quote timed out."

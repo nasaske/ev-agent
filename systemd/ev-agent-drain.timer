@@ -1,0 +1,11 @@
+[Unit]
+Description=E.V Agent — drain once a day, out of the way
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=ev-agent-drain.service
+
+[Install]
+WantedBy=timers.target

@@ -112,9 +112,15 @@ def _lines(path: Path) -> Iterator[dict]:
         return
 
 
+def _is_injected(entry: dict) -> bool:
+    return bool(entry.get("isMeta"))
+
+
 def _read_claude(entry: dict, issued: dict[str, str]) -> Iterator[Turn]:
     kind = entry.get("type")
     if kind not in ("user", "assistant"):
+        return
+    if kind == "user" and _is_injected(entry):
         return
     message = entry.get("message") or {}
     content = message.get("content")

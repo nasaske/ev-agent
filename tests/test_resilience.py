@@ -79,6 +79,7 @@ class Base(unittest.TestCase):
             skills_dir=self.root / "skills",
             min_specificity=0.0,
             praised_min_specificity=0.0,
+            settle_minutes=0,
         )
         self.args = argparse.Namespace(dry_run=False, limit=0)
 
@@ -163,6 +164,37 @@ class DrainKeepsWhatItCouldNotFinish(Base):
     def test_a_clean_drain_empties_the_queue(self):
         for session in self._sessions(2):
             queue.enqueue(self.config.cache_dir, session.path)
+        client = FlakyClient(failures=0)
+
+        with mock.patch.object(cli, "_backend", return_value=client), mock.patch.object(
+            cli, "_vocabulary", return_value=None
+        ):
+            cli.cmd_drain(argparse.Namespace(dry_run=False, limit=0), self.config)
+
+        self.assertEqual([], queue.pending(self.config.cache_dir))
+
+    def test_a_transcript_queued_while_the_drain_runs_is_not_lost(self):
+        session = self._sessions(1)[0]
+        queue.enqueue(self.config.cache_dir, session.path)
+        latecomer = _transcript(self.root, "late.jsonl")
+        cache = self.config.cache_dir
+
+        class QueuesWhileWorking(FlakyClient):
+            def generate(self, system: str, prompt: str) -> str:
+                queue.enqueue(cache, latecomer)
+                return super().generate(system, prompt)
+
+        with mock.patch.object(
+            cli, "_backend", return_value=QueuesWhileWorking(failures=0)
+        ), mock.patch.object(cli, "_vocabulary", return_value=None):
+            cli.cmd_drain(argparse.Namespace(dry_run=False, limit=0), self.config)
+
+        self.assertEqual([latecomer], [item.path for item in queue.pending(cache)])
+
+    def test_a_transcript_deleted_before_the_drain_stops_being_retried(self):
+        session = self._sessions(1)[0]
+        queue.enqueue(self.config.cache_dir, session.path)
+        session.path.unlink()
         client = FlakyClient(failures=0)
 
         with mock.patch.object(cli, "_backend", return_value=client), mock.patch.object(

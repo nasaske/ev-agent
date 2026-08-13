@@ -10,7 +10,7 @@ review before they enter your knowledge base.
 It never sends your sessions anywhere. The model runs on your machine.
 
 <p align="center">
-  <img src="assets/ev-scan.svg" alt="ev scan on a real corpus: 381 transcripts, 160 contained secrets, 4 quarantined, 248 carry a lesson" width="100%">
+  <img src="assets/ev-scan.svg" alt="ev scan on a real corpus: 388 transcripts, 133 contained secrets, 3 quarantined, 201 carry a lesson" width="100%">
 </p>
 
 ```bash
@@ -26,7 +26,7 @@ promoted → ~/Documentos/Obsidian Vault/AI Brain/Skills Brain/pin-the-lockfile-
 
 **Transcripts are credential dumps.** Every file your agent reads lands in the
 transcript verbatim — `.env` files, PEM blocks, tokens pasted into chat. On the
-corpus this was built against, 42% of transcripts contained something
+corpus this is measured against today, 34% of transcripts contain something
 credential-shaped, including the harness's own auth tokens. Any design that
 ships them to a hosted model is a leak waiting to happen, and the free tiers are
 the ones that train on your prompts.
@@ -39,8 +39,8 @@ So the pipeline is built inside out:
 
 **Distil before you scrub.** Dropping tool *results* removes most of the secret
 surface at the source, because that is where read files live. It also takes
-103 MB of transcripts down to a few megabytes — which is what makes a small
-local model viable in the first place.
+3.0 GB of transcripts down to 1.5 MB of digest — a factor of two thousand, and
+what makes a small local model viable in the first place.
 
 **Fail closed.** After redaction, the text is re-read looking for anything that
 still looks like a credential: entropy, known prefixes, assignment shapes. Any
@@ -86,8 +86,81 @@ approved clears at `EV_PRAISED_MIN_SPECIFICITY` (0.42) instead of
 of value and rarity is only a proxy for it.
 
 Both floors are worth tuning: the score distribution is tight, so small changes
-move a lot. On a 386-session corpus, 197 passed acceptance and 62 cleared
+move a lot. On a 388-session corpus, 198 passed acceptance and 67 cleared
 specificity.
+
+### Most of what looks like your voice is not
+
+The acceptance gate reads the user's turns, which sounds simple until you
+notice how much of a transcript is *addressed* to the user without being
+written by them. Claude Code marks these `isMeta`: skill files pasted in as
+context, `<local-command-caveat>` wrappers, hook output, "Continue from where
+you left off", and — worst — summaries this tool's own neighbours wrote about
+earlier sessions.
+
+They are not a rounding error. Of 2,077 user-role text turns in this corpus,
+**1,725 were machine-injected — 96% by character count.** And they read as
+judgement, because prose written for an agent is full of the words the gate
+looks for:
+
+| Fired | Phrase | Where it came from |
+|---|---|---|
+| 353 | `thank you` | the sign-off of a memory skill's prompt |
+| 207 | `exactly` | a JSON schema: *"command array to match exactly"* |
+| 202 | `it works` | a hook instruction: *"once it works, wrap with 2>/dev/null"* |
+| 105 | `errado` | a summary of a previous session, read back as a live correction |
+
+Left unfiltered, **89 of 126 sessions had their verdict decided by text the
+user never wrote** — 50 disqualified as reworked, 39 credited as praised. The
+tool was reporting "you corrected this" about sessions nobody had corrected,
+and the loop closed on itself: its own notes came back as its own evidence.
+
+Most of those 50 failed an earlier gate anyway, so the throughput change is
+small — 198 sessions now reach the model instead of 196. The reason to fix it is
+not throughput. It is that the largest section of the digest, the 34% spent on
+what you asked for, was being filled with `<observed_from_primary_session>`
+telemetry instead of your words, on *every* session that reached the model.
+A gate that reads the wrong text is worse than no gate, because it reports a
+number and the number is wrong.
+
+## The gate after the model
+
+Four gates decide whether to call the model. One more decides whether to keep
+what came back, because the characteristic failure of a small model is not a
+bad note — it is a confident note about a session that never happened. Given a
+log about certificates, `qwen2.5:7b` wrote about an unrelated subject entirely,
+and it wrote about it well.
+
+So the note is read back against the log it came from, and `EV_MIN_GROUNDING`
+(0.40) of what it names has to be there. Anything below that is discarded
+rather than filed. What "what it names" means took three tries to get right,
+and each wrong answer failed the same way — it punished a good note.
+
+**Only `CASE` and `WHY` are judged.** `PATTERN` is exempt, because the prompt
+orders it written *without* this session's proper nouns. Its vocabulary is new
+by construction, so scoring it marks the model down for obeying the
+instruction, and the better the generalisation the worse it looks. The first
+version scored it anyway. Every local model failed: the one that generalised
+best scored 0.33 and lost a note it had gotten right, while the one that
+ignored the instruction and left the product name in scored 0.60 and passed.
+The gate was rewarding disobedience.
+
+**Identifiers are judged, not prose.** Files, flags, paths and symbols —
+`state.vscdb`, `pkcs12`, `--no-verify`, `auxiliaryBar`. A note that names two
+real ones is a note about a session that happened, and inventing one is
+exactly how a small model fails. Prose cannot carry that weight: the note is
+written in English and the log is in whatever language you work in, so
+scoring words marks down a correct translation. On a Portuguese session about
+certificates, every model scored under 0.20 for writing "private key" where
+the log said "chave privada". Judged on identifiers, the same notes score 1.00
+and an invented claim still scores 0.00.
+
+When a note names nothing concrete — some models write pure prose — there is
+no identifier to check, so its words are read instead, through a crude
+suffix strip so that "removing" still matches a log that says "removed".
+
+`ev bench` prints the grounding share and the invented terms beside each
+model, so this is checkable on your own sessions rather than taken on faith.
 
 ## Watching it work
 
@@ -137,13 +210,28 @@ session; a drain processes the queue when the machine is free.
 ```
 
 Queueing is instant and never blocks the end of a session — the hook exits 0
-even on malformed input. Draining is where the time goes, so run it when you
-are not using the machine:
+even on malformed input. Draining is where the time goes, so it runs once a
+day, out of the way:
 
 ```bash
-ev drain              # process everything queued
+install -m 644 systemd/ev-agent-drain.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now ev-agent-drain.timer
+```
+
+The unit runs at `Nice=19` with idle CPU and I/O scheduling, so it yields to
+anything you are doing. `Persistent=true` catches up after a laptop that was
+asleep at 04:00. Or drain by hand whenever:
+
+```bash
+ev drain              # process everything settled
 ev drain --limit 3    # or just a few
 ```
+
+**The Stop hook fires after every assistant turn, not only at session end**, so
+the queue always contains the session you are still in. A transcript is not
+processed until it has been quiet for `EV_SETTLE_MINUTES` (30), which keeps
+half-written sessions out of your knowledge base.
 
 A lock file keeps two drains from running at once, which on a laptop means two
 model loads competing for the same RAM. Because nothing is waiting on the
@@ -274,6 +362,8 @@ Everything is an environment variable with a working default.
 | `EV_PRAISED_MIN_SPECIFICITY` | `0.42` |
 | `EV_COMMON_TERM_RATIO` | `0.04` |
 | `EV_MAX_DIGEST_CHARS` | `8000` |
+| `EV_SETTLE_MINUTES` | `30` |
+| `EV_MIN_GROUNDING` | `0.40` |
 | `EV_TIMEOUT` | `600` |
 | `EV_CACHE` | `~/.cache/ev-agent` |
 
@@ -281,11 +371,12 @@ Everything is an environment variable with a working default.
 
 The first run is the expensive one; every run after it is nearly free.
 
-- Transcripts stream line by line — a 16 MB session never lands in memory.
+- Transcripts stream line by line — the largest session in this corpus is
+  693 MB and never lands in memory. A full scan of 3.0 GB takes 26 seconds.
 - The ledger keys on `(size, mtime)`, so unchanged sessions are skipped with a
   single `stat` call and are never parsed, let alone sent to a model.
-- Four gates run before the model, cheapest first. On a 386-session corpus they
-  reject 355 of them for free.
+- Four gates run before the model, cheapest first. On a 388-session corpus they
+  reject 321 of them for free.
 - The digest is budgeted: intent and fixed failures take 60% of the character
   allowance, the work trace and your responses share the rest.
 - The model stays resident for the length of a run and is unloaded explicitly

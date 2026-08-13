@@ -61,6 +61,10 @@ def _joined(fields: dict[str, list[str]], key: str) -> str:
     return " ".join(fields.get(key, [])).strip()
 
 
+def claim_of(candidate: Candidate) -> str:
+    return f"{candidate.case} {candidate.why}"
+
+
 def note(candidate: Candidate, digest: Digest, redactions: int, specificity: float) -> str:
     today = date.today().isoformat()
     session = digest.session

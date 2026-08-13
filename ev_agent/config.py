@@ -57,6 +57,7 @@ class Config:
     allow_free_models: bool
     min_specificity: float
     min_grounding: float
+    settle_minutes: int
     praised_min_specificity: float
     common_term_ratio: float
 
@@ -82,6 +83,7 @@ class Config:
             allow_free_models=_flag("EV_ALLOW_FREE"),
             min_specificity=_float("EV_MIN_SPECIFICITY", 0.55),
             min_grounding=_float("EV_MIN_GROUNDING", 0.40),
+            settle_minutes=_int("EV_SETTLE_MINUTES", 30),
             praised_min_specificity=_float("EV_PRAISED_MIN_SPECIFICITY", 0.42),
             common_term_ratio=_float("EV_COMMON_TERM_RATIO", 0.04),
         )
