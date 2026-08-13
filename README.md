@@ -10,7 +10,7 @@ review before they enter your knowledge base.
 It never sends your sessions anywhere. The model runs on your machine.
 
 <p align="center">
-  <img src="assets/ev-scan.svg" alt="ev scan on a real corpus: 381 transcripts, 160 contained secrets, 4 quarantined, 248 carry a lesson" width="100%">
+  <img src="assets/ev-scan.svg" alt="ev scan on a real corpus: 388 transcripts, 133 contained secrets, 3 quarantined, 201 carry a lesson" width="100%">
 </p>
 
 ```bash
@@ -26,7 +26,7 @@ promoted → ~/Documentos/Obsidian Vault/AI Brain/Skills Brain/pin-the-lockfile-
 
 **Transcripts are credential dumps.** Every file your agent reads lands in the
 transcript verbatim — `.env` files, PEM blocks, tokens pasted into chat. On the
-corpus this was built against, 42% of transcripts contained something
+corpus this is measured against today, 34% of transcripts contain something
 credential-shaped, including the harness's own auth tokens. Any design that
 ships them to a hosted model is a leak waiting to happen, and the free tiers are
 the ones that train on your prompts.
@@ -39,8 +39,8 @@ So the pipeline is built inside out:
 
 **Distil before you scrub.** Dropping tool *results* removes most of the secret
 surface at the source, because that is where read files live. It also takes
-103 MB of transcripts down to a few megabytes — which is what makes a small
-local model viable in the first place.
+3.0 GB of transcripts down to 1.5 MB of digest — a factor of two thousand, and
+what makes a small local model viable in the first place.
 
 **Fail closed.** After redaction, the text is re-read looking for anything that
 still looks like a credential: entropy, known prefixes, assignment shapes. Any
@@ -86,8 +86,42 @@ approved clears at `EV_PRAISED_MIN_SPECIFICITY` (0.42) instead of
 of value and rarity is only a proxy for it.
 
 Both floors are worth tuning: the score distribution is tight, so small changes
-move a lot. On a 386-session corpus, 197 passed acceptance and 62 cleared
+move a lot. On a 388-session corpus, 198 passed acceptance and 67 cleared
 specificity.
+
+### Most of what looks like your voice is not
+
+The acceptance gate reads the user's turns, which sounds simple until you
+notice how much of a transcript is *addressed* to the user without being
+written by them. Claude Code marks these `isMeta`: skill files pasted in as
+context, `<local-command-caveat>` wrappers, hook output, "Continue from where
+you left off", and — worst — summaries this tool's own neighbours wrote about
+earlier sessions.
+
+They are not a rounding error. Of 2,077 user-role text turns in this corpus,
+**1,725 were machine-injected — 96% by character count.** And they read as
+judgement, because prose written for an agent is full of the words the gate
+looks for:
+
+| Fired | Phrase | Where it came from |
+|---|---|---|
+| 353 | `thank you` | the sign-off of a memory skill's prompt |
+| 207 | `exactly` | a JSON schema: *"command array to match exactly"* |
+| 202 | `it works` | a hook instruction: *"once it works, wrap with 2>/dev/null"* |
+| 105 | `errado` | a summary of a previous session, read back as a live correction |
+
+Left unfiltered, **89 of 126 sessions had their verdict decided by text the
+user never wrote** — 50 disqualified as reworked, 39 credited as praised. The
+tool was reporting "you corrected this" about sessions nobody had corrected,
+and the loop closed on itself: its own notes came back as its own evidence.
+
+Most of those 50 failed an earlier gate anyway, so the throughput change is
+small — 198 sessions now reach the model instead of 196. The reason to fix it is
+not throughput. It is that the largest section of the digest, the 34% spent on
+what you asked for, was being filled with `<observed_from_primary_session>`
+telemetry instead of your words, on *every* session that reached the model.
+A gate that reads the wrong text is worse than no gate, because it reports a
+number and the number is wrong.
 
 ## The gate after the model
 
@@ -337,11 +371,12 @@ Everything is an environment variable with a working default.
 
 The first run is the expensive one; every run after it is nearly free.
 
-- Transcripts stream line by line — a 16 MB session never lands in memory.
+- Transcripts stream line by line — the largest session in this corpus is
+  693 MB and never lands in memory. A full scan of 3.0 GB takes 26 seconds.
 - The ledger keys on `(size, mtime)`, so unchanged sessions are skipped with a
   single `stat` call and are never parsed, let alone sent to a model.
-- Four gates run before the model, cheapest first. On a 386-session corpus they
-  reject 355 of them for free.
+- Four gates run before the model, cheapest first. On a 388-session corpus they
+  reject 321 of them for free.
 - The digest is budgeted: intent and fixed failures take 60% of the character
   allowance, the work trace and your responses share the rest.
 - The model stays resident for the length of a run and is unloaded explicitly
