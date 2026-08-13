@@ -3,14 +3,15 @@ from __future__ import annotations
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, bench, grounding, openrouter, progress, queue, rarity, watch
+from . import __version__, app, bench, grounding, i18n, openrouter, progress, queue, rarity, watch
+from . import focus as focus_module
 from .config import Config
 from .distill import Digest, build
-from .model import SYSTEM_PROMPT, Client, ModelUnavailable
+from .model import Client, ModelUnavailable, system_prompt
 from .render import Skipped, claim_of, note, parse
 from .scrub import scrub
 from .sources import Session, discover, newer_than, relative_to_home, session_id_from
@@ -124,6 +125,12 @@ def _floor_for(config: Config, finding: Inspection) -> float:
     return config.min_specificity
 
 
+def _prompt_for(config: Config) -> str:
+    prefs = focus_module.load(config.config_dir)
+    language = i18n.note_language(prefs.note_language or config.note_language)
+    return system_prompt(prefs.focus, language)
+
+
 def _process(
     session: Session,
     config: Config,
@@ -132,6 +139,7 @@ def _process(
     ledger: Ledger,
     dry_run: bool,
     reporter: progress.Reporter | None = None,
+    prompt: str = "",
 ) -> tuple[str, str]:
     finding = inspect(session, config, vocabulary, reporter)
 
@@ -159,7 +167,7 @@ def _process(
 
     if reporter:
         reporter.stage(progress.ASKING)
-    candidate = parse(client.generate(SYSTEM_PROMPT, finding.clean_text))
+    candidate = parse(client.generate(prompt or _prompt_for(config), finding.clean_text))
 
     claim = claim_of(candidate)
     if not grounding.is_grounded(claim, finding.clean_text, config.min_grounding):
@@ -194,6 +202,7 @@ def _run_over(
 
     vocabulary = _vocabulary(config)
     ledger = Ledger.load(config.cache_dir)
+    prompt = _prompt_for(config)
     tally: dict[str, int] = {}
     reporter = progress.Reporter(
         config.cache_dir, config.backend, _model_name(config), len(sessions)
@@ -209,7 +218,7 @@ def _run_over(
             reporter.begin(session.label)
             try:
                 outcome, detail = _process(
-                    session, config, client, vocabulary, ledger, dry_run, reporter
+                    session, config, client, vocabulary, ledger, dry_run, reporter, prompt
                 )
                 consecutive_failures = 0
             except Skipped:
@@ -417,6 +426,16 @@ def _most_specific(config: Config) -> Session | None:
     return best[1] if best else None
 
 
+def cmd_app(args: argparse.Namespace, config: Config) -> int:
+    if args.port:
+        config = replace(config, ui_port=args.port)
+    try:
+        return app.serve(config, launch=not args.no_window)
+    except app.Refused as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
 def cmd_watch(args: argparse.Namespace, config: Config) -> int:
     if args.once:
         print(watch.snapshot(config.cache_dir))
@@ -506,6 +525,11 @@ def build_parser() -> argparse.ArgumentParser:
     benching.add_argument("--models", required=True, help="comma separated, e.g. gemma3:4b,phi4-mini")
     benching.add_argument("--transcript", default="", help="defaults to your most specific session")
     benching.set_defaults(func=cmd_bench)
+
+    application = subparsers.add_parser("app", help="open the local app window")
+    application.add_argument("--port", type=int, default=0)
+    application.add_argument("--no-window", action="store_true", help="serve without opening it")
+    application.set_defaults(func=cmd_app)
 
     watching = subparsers.add_parser("watch", help="live view of the agent working")
     watching.add_argument("--interval", type=float, default=1.0)
