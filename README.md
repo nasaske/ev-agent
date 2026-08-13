@@ -89,6 +89,45 @@ Both floors are worth tuning: the score distribution is tight, so small changes
 move a lot. On a 386-session corpus, 197 passed acceptance and 62 cleared
 specificity.
 
+## The gate after the model
+
+Four gates decide whether to call the model. One more decides whether to keep
+what came back, because the characteristic failure of a small model is not a
+bad note — it is a confident note about a session that never happened. Given a
+log about certificates, `qwen2.5:7b` wrote about an unrelated subject entirely,
+and it wrote about it well.
+
+So the note is read back against the log it came from, and `EV_MIN_GROUNDING`
+(0.40) of what it names has to be there. Anything below that is discarded
+rather than filed. What "what it names" means took three tries to get right,
+and each wrong answer failed the same way — it punished a good note.
+
+**Only `CASE` and `WHY` are judged.** `PATTERN` is exempt, because the prompt
+orders it written *without* this session's proper nouns. Its vocabulary is new
+by construction, so scoring it marks the model down for obeying the
+instruction, and the better the generalisation the worse it looks. The first
+version scored it anyway. Every local model failed: the one that generalised
+best scored 0.33 and lost a note it had gotten right, while the one that
+ignored the instruction and left the product name in scored 0.60 and passed.
+The gate was rewarding disobedience.
+
+**Identifiers are judged, not prose.** Files, flags, paths and symbols —
+`state.vscdb`, `pkcs12`, `--no-verify`, `auxiliaryBar`. A note that names two
+real ones is a note about a session that happened, and inventing one is
+exactly how a small model fails. Prose cannot carry that weight: the note is
+written in English and the log is in whatever language you work in, so
+scoring words marks down a correct translation. On a Portuguese session about
+certificates, every model scored under 0.20 for writing "private key" where
+the log said "chave privada". Judged on identifiers, the same notes score 1.00
+and an invented claim still scores 0.00.
+
+When a note names nothing concrete — some models write pure prose — there is
+no identifier to check, so its words are read instead, through a crude
+suffix strip so that "removing" still matches a log that says "removed".
+
+`ev bench` prints the grounding share and the invented terms beside each
+model, so this is checkable on your own sessions rather than taken on faith.
+
 ## Watching it work
 
 `ev drain` can spend minutes on a single session, so it reports what it is

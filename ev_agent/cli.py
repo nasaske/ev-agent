@@ -11,7 +11,7 @@ from . import __version__, bench, grounding, openrouter, progress, queue, rarity
 from .config import Config
 from .distill import Digest, build
 from .model import SYSTEM_PROMPT, Client, ModelUnavailable
-from .render import Skipped, note, parse
+from .render import Skipped, claim_of, note, parse
 from .scrub import scrub
 from .sources import Session, discover, newer_than, relative_to_home, session_id_from
 from .store import Ledger, list_candidates, promote, slugify, write_candidate
@@ -161,7 +161,7 @@ def _process(
         reporter.stage(progress.ASKING)
     candidate = parse(client.generate(SYSTEM_PROMPT, finding.clean_text))
 
-    claim = f"{candidate.case} {candidate.pattern}"
+    claim = claim_of(candidate)
     if not grounding.is_grounded(claim, finding.clean_text, config.min_grounding):
         share = grounding.check(claim, finding.clean_text).share
         ledger.record(session, UNGROUNDED, f"{share:.0%}")
@@ -396,7 +396,7 @@ def cmd_bench(args: argparse.Namespace, config: Config) -> int:
     print(f"reference: {session.label}  ·  {len(digest)} chars\n")
 
     for model in models:
-        print(bench.report(bench.measure(model, digest, config)))
+        print(bench.report(bench.measure(model, digest, config), floor=config.min_grounding))
         print()
     return 0
 
