@@ -321,6 +321,7 @@ There are no runtime dependencies. The whole thing is the standard library.
 | `ev app` | Open the local window: live view, and where you pick what the agent looks for. |
 | `ev watch` | Live view of the agent working. `--once` prints one frame. |
 | `ev index` | Rebuild the corpus vocabulary used for specificity. |
+| `ev forget` | Drop the ledger so every session is judged again. Needs `--yes`. |
 | `ev list` | Candidates awaiting review. |
 | `ev promote <slug>` | Move a reviewed candidate into the knowledge base. |
 | `ev status` | Backend, queue depth, ledger, specificity floor. |

@@ -97,7 +97,7 @@ class LeavesOrdinaryTextAlone(unittest.TestCase):
         self.assertEqual(text, result.text)
 
     def test_long_file_paths_are_not_mistaken_for_secrets(self):
-        text = "edit home/daviparma/Documentos/Obsidian/smartautomations/src/main.py now"
+        text = "edit home/user/Documentos/Obsidian/smartautomations/src/main.py now"
 
         result = scrub(text)
 

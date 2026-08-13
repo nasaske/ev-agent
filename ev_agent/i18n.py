@@ -4,6 +4,19 @@ from .focus import EN, PT
 
 _STRINGS: dict[str, dict[str, str]] = {
     "title": {EN: "E.V AGENT", PT: "E.V AGENT"},
+    "tagline": {
+        EN: "Sessions in, reviewed knowledge out. Nothing leaves this machine.",
+        PT: "Sessões entram, conhecimento revisado sai. Nada sai desta máquina.",
+    },
+    "fig_inbox": {EN: "awaiting review", PT: "para revisar"},
+    "preferences": {EN: "Preferences", PT: "Preferências"},
+    "focus_lede": {
+        EN: "Tick what you want kept. This is not only about software — add any "
+            "subject you take notes on, and the agent will look for lessons in it.",
+        PT: "Marque o que você quer guardar. Isto não é só sobre software — "
+            "adicione qualquer assunto sobre o qual você anota, e o agente "
+            "procura lições nele.",
+    },
     "working": {EN: "working", PT: "trabalhando"},
     "idle": {EN: "idle", PT: "parado"},
     "of": {EN: "of", PT: "de"},
