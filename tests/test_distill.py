@@ -39,6 +39,18 @@ def _says(text: str) -> dict:
     return {"type": "user", "message": {"role": "user", "content": text}}
 
 
+def _injected(text: str) -> dict:
+    return {"type": "user", "isMeta": True, "message": {"role": "user", "content": text}}
+
+
+def _injected_blocks(text: str) -> dict:
+    return {
+        "type": "user",
+        "isMeta": True,
+        "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+    }
+
+
 PRAISED = [
     _says("o build quebrou no deploy, resolve"),
     _agent({"type": "thinking", "thinking": "a" * 4000, "signature": "x"}),
@@ -150,6 +162,52 @@ class ScoresTheOutcome(Base):
         digest = build(_session(PRAISED * 60, self.root, "big"), max_chars=2_000)
 
         self.assertLessEqual(len(digest.text), 2_000)
+
+
+HOOK_PRAISE = (
+    "[MESSAGE FROM NON-USER SOURCE - NOT USER INPUT] "
+    "claude's full response to user: **pr #37 mergeado automaticamente!** funcionou"
+)
+HOOK_CORRECTION = (
+    "<observed_from_primary_session> resumo da sessao anterior: o envio estava "
+    "errado, mandava para o e-mail em vez do cliente </observed_from_primary_session>"
+)
+
+
+class IgnoresTextTheUserNeverWrote(Base):
+    def test_injected_text_is_not_counted_as_a_user_turn(self):
+        lines = [_says("arruma o build"), _injected("Continue from where you left off.")]
+
+        digest = build(_session(lines, self.root, "meta"), max_chars=12_000)
+
+        self.assertEqual(1, digest.user_turns)
+
+    def test_praise_inside_injected_text_does_not_make_a_session_praised(self):
+        lines = [*REWORKED[:4], _injected(HOOK_PRAISE)]
+
+        digest = build(_session(lines, self.root, "fakepraise"), max_chars=12_000)
+
+        self.assertEqual("unremarked", digest.verdict.label)
+
+    def test_a_correction_inside_injected_text_does_not_disqualify_the_session(self):
+        lines = [*REWORKED[:4], _injected_blocks(HOOK_CORRECTION)]
+
+        digest = build(_session(lines, self.root, "fakerework"), max_chars=12_000)
+
+        self.assertFalse(digest.verdict.refused)
+
+    def test_injected_text_never_reaches_the_digest(self):
+        lines = [_says("arruma o build"), _injected(HOOK_PRAISE)]
+
+        digest = build(_session(lines, self.root, "leak"), max_chars=12_000)
+
+        self.assertNotIn("pr #37", digest.text)
+
+    def test_what_the_user_actually_wrote_is_still_read(self):
+        digest = build(_session(PRAISED, self.root, "intact"), max_chars=12_000)
+
+        self.assertEqual("praised", digest.verdict.label)
+        self.assertEqual(2, digest.user_turns)
 
 
 if __name__ == "__main__":
