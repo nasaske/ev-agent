@@ -188,6 +188,45 @@ Red marks what was stopped, blue marks what moved through — the same colour
 grammar as the diagrams. `ev watch --once` prints a single frame, which is what
 you want in a status bar or a cron report.
 
+## Telling it what you care about
+
+`ev app` opens a local window: the same live view, plus the one control that
+matters — what the agent should be looking for.
+
+```bash
+ev app              # opens its own window
+ev app --no-window  # serve only, for a machine you reach over ssh
+```
+
+The list is not a taxonomy handed down by the tool. Seven subjects ship as
+defaults because they cover most engineering work, but the field underneath
+takes free text, and `Vinhos naturais` is as valid an entry as `Arquitetura`.
+Anyone keeping notes about anything is the intended user; a tool that only
+records lessons about software would be a smaller tool for no reason.
+
+**Nothing ticked means everything is kept.** The default is not a choice you
+have to make before the tool works, and unticking the last box returns you to
+it rather than to silence.
+
+**Focus shapes the prompt; it does not filter on keywords.** The chosen
+subjects are stated to the model, which is told to answer SKIP when a log's
+lesson belongs to none of them. The obvious alternative — matching session
+terms against the focus before spending two minutes of model time — is cheaper
+and worse, because a term filter throws away exactly the session whose
+vocabulary you did not have yet, which is the session most worth a note. The
+grounding gate already taught this lesson three times.
+
+**Two languages, on two separate axes.** The interface reads in English or
+Brazilian Portuguese, and so do the notes, but they are set independently:
+working in Portuguese while keeping an English knowledge base is a normal
+thing to want. `EV_LANG` sets both; `EV_NOTE_LANG` overrides the second.
+
+The window is the standard library too — `http.server` bound to `127.0.0.1`,
+a fresh token per run that the API checks, and no dependency added to a
+project whose whole claim is that it has none. Chromium-family browsers open
+it frameless so it behaves like an application; anything else falls back to a
+tab.
+
 ## Running it automatically
 
 The point is not to remember to run it. A `Stop` hook queues each finished
@@ -279,8 +318,10 @@ There are no runtime dependencies. The whole thing is the standard library.
 | `ev session <path>` | Process one transcript now. |
 | `ev enqueue <path>` | Add a transcript to the queue. This is what the hook calls. |
 | `ev drain` | Process the queue, one session at a time, under a lock. |
+| `ev app` | Open the local window: live view, and where you pick what the agent looks for. |
 | `ev watch` | Live view of the agent working. `--once` prints one frame. |
 | `ev index` | Rebuild the corpus vocabulary used for specificity. |
+| `ev forget` | Drop the ledger so every session is judged again. Needs `--yes`. |
 | `ev list` | Candidates awaiting review. |
 | `ev promote <slug>` | Move a reviewed candidate into the knowledge base. |
 | `ev status` | Backend, queue depth, ledger, specificity floor. |
@@ -366,6 +407,10 @@ Everything is an environment variable with a working default.
 | `EV_MIN_GROUNDING` | `0.40` |
 | `EV_TIMEOUT` | `600` |
 | `EV_CACHE` | `~/.cache/ev-agent` |
+| `EV_CONFIG` | `~/.config/ev-agent` |
+| `EV_LANG` | `en` (`pt-BR` also understood) |
+| `EV_NOTE_LANG` | follows `EV_LANG` |
+| `EV_UI_PORT` | `7317` |
 
 ## Efficiency
 

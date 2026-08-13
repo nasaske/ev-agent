@@ -90,7 +90,7 @@ PORTUGUESE_LOG = """# Session claude:0e85e5e2
 outcome: unremarked
 
 ## What the user asked for
-- asked: '/home/daviparma/Downloads/certificado_final.pem'
+- asked: '/home/user/Downloads/certificado_final.pem'
 
 ## What was actually done
 - said: Os `.pem` têm só a cadeia de certificados, sem a chave privada — e mTLS

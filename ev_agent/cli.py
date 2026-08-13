@@ -3,14 +3,15 @@ from __future__ import annotations
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, bench, grounding, openrouter, progress, queue, rarity, watch
+from . import __version__, app, bench, grounding, i18n, openrouter, progress, queue, rarity, watch
+from . import focus as focus_module
 from .config import Config
 from .distill import Digest, build
-from .model import SYSTEM_PROMPT, Client, ModelUnavailable
+from .model import Client, ModelUnavailable, system_prompt
 from .render import Skipped, claim_of, note, parse
 from .scrub import scrub
 from .sources import Session, discover, newer_than, relative_to_home, session_id_from
@@ -124,6 +125,12 @@ def _floor_for(config: Config, finding: Inspection) -> float:
     return config.min_specificity
 
 
+def _prompt_for(config: Config) -> str:
+    prefs = focus_module.load(config.config_dir)
+    language = i18n.note_language(prefs.note_language or config.note_language)
+    return system_prompt(prefs.focus, language)
+
+
 def _process(
     session: Session,
     config: Config,
@@ -132,34 +139,36 @@ def _process(
     ledger: Ledger,
     dry_run: bool,
     reporter: progress.Reporter | None = None,
+    prompt: str = "",
 ) -> tuple[str, str]:
     finding = inspect(session, config, vocabulary, reporter)
 
+    def decide(outcome: str, detail: str = "", recorded: str = "") -> tuple[str, str]:
+        if not dry_run:
+            ledger.record(session, outcome, recorded or detail)
+        return outcome, detail
+
     if finding.quarantined:
         reason = finding.reasons[0] if finding.reasons else "?"
-        ledger.record(session, QUARANTINED, ", ".join(finding.reasons[:2]))
-        return QUARANTINED, reason
+        return decide(QUARANTINED, reason, ", ".join(finding.reasons[:2]))
 
     if not finding.digest.did_real_work:
-        ledger.record(session, NO_WORK)
-        return NO_WORK, ""
+        return decide(NO_WORK)
 
     if finding.digest.verdict.refused:
-        ledger.record(session, REWORKED)
-        return REWORKED, finding.digest.verdict.label
+        return decide(REWORKED, finding.digest.verdict.label, "")
 
     floor = _floor_for(config, finding)
     if finding.specificity < floor:
         detail = f"{finding.specificity:.2f} < {floor:.2f}"
-        ledger.record(session, ROUTINE, detail)
-        return ROUTINE, detail
+        return decide(ROUTINE, detail)
 
     if dry_run:
         return "would-send", f"{finding.digest.summary} · spec {finding.specificity:.2f}"
 
     if reporter:
         reporter.stage(progress.ASKING)
-    candidate = parse(client.generate(SYSTEM_PROMPT, finding.clean_text))
+    candidate = parse(client.generate(prompt or _prompt_for(config), finding.clean_text))
 
     claim = claim_of(candidate)
     if not grounding.is_grounded(claim, finding.clean_text, config.min_grounding):
@@ -194,6 +203,7 @@ def _run_over(
 
     vocabulary = _vocabulary(config)
     ledger = Ledger.load(config.cache_dir)
+    prompt = _prompt_for(config)
     tally: dict[str, int] = {}
     reporter = progress.Reporter(
         config.cache_dir, config.backend, _model_name(config), len(sessions)
@@ -209,7 +219,7 @@ def _run_over(
             reporter.begin(session.label)
             try:
                 outcome, detail = _process(
-                    session, config, client, vocabulary, ledger, dry_run, reporter
+                    session, config, client, vocabulary, ledger, dry_run, reporter, prompt
                 )
                 consecutive_failures = 0
             except Skipped:
@@ -263,13 +273,13 @@ def cmd_scan(args: argparse.Namespace, config: Config) -> int:
 
     exposed = [f for f in findings if f.redactions]
     quarantined = [f for f in findings if f.quarantined]
-    worked = [f for f in findings if f.digest.did_real_work and not f.digest.verdict.refused]
-    specific = [f for f in worked if f.specificity >= config.min_specificity]
-    praised = [f for f in findings if f.digest.verdict.accepted]
+    survived = [f for f in findings if not f.quarantined]
+    worked = [f for f in survived if f.digest.did_real_work and not f.digest.verdict.refused]
+    specific = [f for f in worked if f.specificity >= _floor_for(config, f)]
+    praised = [f for f in survived if f.digest.verdict.accepted]
 
-    for finding in sorted(findings, key=lambda f: f.specificity, reverse=True)[: args.top]:
-        if finding.specificity < config.min_specificity and not finding.quarantined:
-            continue
+    shown = quarantined + specific
+    for finding in sorted(shown, key=lambda f: f.specificity, reverse=True)[: args.top]:
         flag = "QUARANTINE" if finding.quarantined else "candidate "
         print(
             f"  {flag}  {finding.digest.session.label}  spec {finding.specificity:.2f}  "
@@ -369,6 +379,22 @@ def cmd_drain(args: argparse.Namespace, config: Config) -> int:
     return status
 
 
+def cmd_forget(args: argparse.Namespace, config: Config) -> int:
+    ledger = Ledger.load(config.cache_dir)
+    if not ledger.entries:
+        print("Nothing to forget.")
+        return 0
+    if not args.yes:
+        tally = " · ".join(f"{k}: {v}" for k, v in sorted(ledger.counts().items()))
+        print(f"{len(ledger.entries)} decisions on record — {tally}")
+        print("Re-run with --yes to forget them and reconsider every session.")
+        return 0
+    count = ledger.forget_all()
+    ledger.save()
+    print(f"Forgot {count} decisions. The next run reconsiders every session.")
+    return 0
+
+
 def cmd_index(args: argparse.Namespace, config: Config) -> int:
     vocabulary = _vocabulary(config, rebuild=True)
     if not vocabulary:
@@ -415,6 +441,16 @@ def _most_specific(config: Config) -> Session | None:
         if best is None or finding.specificity > best[0]:
             best = (finding.specificity, session)
     return best[1] if best else None
+
+
+def cmd_app(args: argparse.Namespace, config: Config) -> int:
+    if args.port:
+        config = replace(config, ui_port=args.port)
+    try:
+        return app.serve(config, launch=not args.no_window)
+    except app.Refused as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 def cmd_watch(args: argparse.Namespace, config: Config) -> int:
@@ -502,10 +538,19 @@ def build_parser() -> argparse.ArgumentParser:
     index = subparsers.add_parser("index", help="rebuild the corpus vocabulary")
     index.set_defaults(func=cmd_index)
 
+    forget = subparsers.add_parser("forget", help="drop the ledger so sessions are reconsidered")
+    forget.add_argument("--yes", action="store_true", help="actually forget")
+    forget.set_defaults(func=cmd_forget)
+
     benching = subparsers.add_parser("bench", help="compare models on one real session")
     benching.add_argument("--models", required=True, help="comma separated, e.g. gemma3:4b,phi4-mini")
     benching.add_argument("--transcript", default="", help="defaults to your most specific session")
     benching.set_defaults(func=cmd_bench)
+
+    application = subparsers.add_parser("app", help="open the local app window")
+    application.add_argument("--port", type=int, default=0)
+    application.add_argument("--no-window", action="store_true", help="serve without opening it")
+    application.set_defaults(func=cmd_app)
 
     watching = subparsers.add_parser("watch", help="live view of the agent working")
     watching.add_argument("--interval", type=float, default=1.0)

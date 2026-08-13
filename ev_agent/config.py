@@ -14,6 +14,7 @@ DEFAULT_MODEL = "phi4-mini"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_BACKEND = "ollama"
 DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash"
+DEFAULT_LANGUAGE = "en"
 
 
 def _path(name: str, default: Path) -> Path:
@@ -60,11 +61,16 @@ class Config:
     settle_minutes: int
     praised_min_specificity: float
     common_term_ratio: float
+    config_dir: Path
+    language: str
+    note_language: str
+    ui_port: int
 
     @classmethod
     def load(cls) -> "Config":
         vault = _path("EV_VAULT", DEFAULT_VAULT)
         skills = _path("EV_SKILLS_DIR", vault / "AI Brain" / "Skills Brain")
+        language = os.environ.get("EV_LANG", DEFAULT_LANGUAGE).strip() or DEFAULT_LANGUAGE
         return cls(
             claude_projects=_path("EV_CLAUDE_PROJECTS", DEFAULT_CLAUDE),
             codex_sessions=_path("EV_CODEX_SESSIONS", DEFAULT_CODEX),
@@ -86,4 +92,8 @@ class Config:
             settle_minutes=_int("EV_SETTLE_MINUTES", 30),
             praised_min_specificity=_float("EV_PRAISED_MIN_SPECIFICITY", 0.42),
             common_term_ratio=_float("EV_COMMON_TERM_RATIO", 0.04),
+            config_dir=_path("EV_CONFIG", HOME / ".config" / "ev-agent"),
+            language=language,
+            note_language=os.environ.get("EV_NOTE_LANG", "").strip() or language,
+            ui_port=_int("EV_UI_PORT", 7317),
         )

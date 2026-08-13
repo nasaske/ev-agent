@@ -5,7 +5,9 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, replace
 
-SYSTEM_PROMPT = """\
+from .focus import Focus
+
+_PROMPT = """\
 You write reusable engineering patterns from agent session logs.
 
 The log you receive has already been filtered: the work in it succeeded and the
@@ -36,7 +38,7 @@ Rules:
   told to them. Most sessions are routine. Skipping is the common answer.
 - Placeholders like [redacted:...] are removed secrets. Never speculate about
   their contents, and never reproduce them.
-- Write in English. Keep the whole reply under 220 words.
+{focus}- Write in {language}. Keep the whole reply under 220 words.
 
 Reply with exactly this template and nothing else:
 
@@ -49,10 +51,33 @@ WHY: <the concrete result in the log that shows it worked — a command that
      outcome line in the header; that is an input, not evidence.>
 """
 
+_FOCUS_CLAUSE = """\
+- This reader keeps notes on a few subjects only:
+{areas}
+  If the lesson in this log belongs to none of them, reply with exactly SKIP,
+  however good the work was.
+"""
+
 _TEMPERATURE = 0.2
 _DEFAULT_CONTEXT_WINDOW = 4096
 _UNLOADED = "0"
 _RESIDENT_DURING_RUN = "5m"
+
+DEFAULT_NOTE_LANGUAGE = "English"
+
+
+def system_prompt(focus: Focus | None = None, language: str = DEFAULT_NOTE_LANGUAGE) -> str:
+    return _PROMPT.format(focus=_focus_clause(focus), language=language)
+
+
+def _focus_clause(focus: Focus | None) -> str:
+    if focus is None or focus.everything:
+        return ""
+    areas = "\n".join(f"    · {hint}" for hint in focus.hints())
+    return _FOCUS_CLAUSE.format(areas=areas)
+
+
+SYSTEM_PROMPT = system_prompt()
 
 
 class ModelUnavailable(RuntimeError):
